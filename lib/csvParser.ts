@@ -19,16 +19,27 @@ import type {
 import { toNumber, parseDate, extractSpec, buildDisplayName } from "./utils";
 
 /**
- * File (CP932) から UTF-8 文字列に変換
+ * File (CP932/Shift_JIS) から文字列に変換
  *
- * ブラウザの TextDecoder は shift_jis をサポートしているため、
- * arrayBuffer → decode → 文字列 という流れで対応します。
+ * FileReader.readAsText() でエンコーディングを指定。
+ * Shift_JIS（CP932）での読込を試行。
  */
 async function fileToUTF8String(file: File): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-  const decoder = new TextDecoder("shift_jis");
-  const text = decoder.decode(arrayBuffer);
-  return text;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result;
+      if (typeof text === "string") {
+        resolve(text);
+      } else {
+        reject(new Error("ファイル読込に失敗しました"));
+      }
+    };
+    reader.onerror = () =>
+      reject(new Error("ファイル読込エラー: " + (reader.error?.message || "")));
+    // Shift_JIS (CP932) で読込を試行
+    reader.readAsText(file, "shift_jis");
+  });
 }
 
 /**
@@ -75,30 +86,8 @@ export async function parseTenshohinCSV(file: File): Promise<RawTenshohinRow[]> 
   try {
     const csvText = await fileToUTF8String(file);
 
-    // 手動パース：ヘッダー行を抽出して列数を確定
-    const lines = csvText.split("\n");
-    if (lines.length < 2) throw new Error("CSVが空またはヘッダーのみです");
-
-    const headerLine = lines[0];
-    const headerFields = Papa.parse<string[]>(headerLine, {
-      skipEmptyLines: false,
-    }).data[0] || [];
-    const expectedColumnCount = headerFields.length;
-
-    // ヘッダーを含めて、指定列数で再パース
-    const truncatedCSV = lines
-      .map((line, idx) => {
-        if (idx === 0) return line; // ヘッダーはそのまま
-        const fields = Papa.parse<string[]>(line, {
-          skipEmptyLines: false,
-        }).data[0] || [];
-        // 指定列数に切り詰め
-        return fields.slice(0, expectedColumnCount).join(",");
-      })
-      .join("\n");
-
     return new Promise((resolve, reject) => {
-      Papa.parse<RawTenshohinRow>(truncatedCSV, {
+      Papa.parse<RawTenshohinRow>(csvText, {
         header: true,
         skipEmptyLines: true,
         dynamicTyping: false,
