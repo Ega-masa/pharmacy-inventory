@@ -35,6 +35,7 @@ export interface RawZaikoRow {
 /** Tenshohin_*.csv 品目マスタの主要列のみ抽出 */
 export interface RawTenshohinRow {
   商品コード: string;
+  ＪＡＮコード: string;
   品名: string;
   容量: string;
   メーカー: string;
