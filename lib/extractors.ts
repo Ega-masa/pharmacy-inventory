@@ -2,7 +2,7 @@
  * 抽出ロジック モジュール
  *
  * 【Phase 4で実装予定】各機能の抽出関数：
- *  - extractReturnCandidates    返品推奨（入庫60日以内）
+ *  - extractReturnCandidates    返品推奨（入庫60日以上経過 + 入庫後処方なし + 最小発注単位以上の在庫あり）
  *  - extractExcessInventory     過剰在庫（在庫月数3か月以上）
  *  - extractExpiryRisk          廃棄リスク（期限180日以内）
  *  - extractLongUnmoved         長期不動品（処方なし180日以上）

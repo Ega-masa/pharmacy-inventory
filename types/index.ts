@@ -64,6 +64,7 @@ export interface RawTenshohinRow {
   ロケーション１: string;
   ロケーション２: string;
   ロケーション３: string;
+  最小取引数: string;
   発注先: string;
   // 全210+列のうち、本システムで使用するもののみ宣言
   // 不足分は実装時に追加
@@ -92,6 +93,7 @@ export interface InventoryItem {
   単位: string;
   月使用数: number;
   最大使用数: number;
+  最小取引数: number; // 最小発注単位（Tenshohin.最小取引数）
   在庫月数: number; // CSV値（信頼できない場合は再計算）
   在庫月数_計算値: number; // 理論在庫 ÷ 月使用数
 
@@ -127,7 +129,13 @@ export interface InventoryItem {
 // 抽出パラメータ
 // ========================================
 export interface ExtractParams {
-  返品_経過日数上限: number; // デフォルト 60
+  /**
+   * 返品推奨の条件（以下の3つすべてを満たす品目を抽出）
+   *  1. 最終入庫日からの経過日数 >= 返品_経過日数下限 (デフォルト 60日)
+   *  2. 入庫日以降に処方実績がない（最終処方日 < 最終入庫日 or 最終処方日が空）
+   *  3. 理論在庫 >= 最小取引数（最小発注単位以上の在庫がある）
+   */
+  返品_経過日数下限: number; // デフォルト 60
   過剰在庫_月数下限: number; // デフォルト 3.0
   廃棄リスク_残日数上限: number; // デフォルト 180
   長期不動_経過日数下限: number; // デフォルト 180
@@ -137,7 +145,7 @@ export interface ExtractParams {
 }
 
 export const DEFAULT_PARAMS: ExtractParams = {
-  返品_経過日数上限: 60,
+  返品_経過日数下限: 60,
   過剰在庫_月数下限: 3.0,
   廃棄リスク_残日数上限: 180,
   長期不動_経過日数下限: 180,
