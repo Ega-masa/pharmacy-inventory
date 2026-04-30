@@ -52,7 +52,7 @@ export async function parseZaikoCSV(file: File): Promise<RawZaikoRow[]> {
             resolve(results.data || []);
           }
         },
-        error: (err) => reject(err),
+        error: (err: unknown) => reject(err instanceof Error ? err : new Error(String(err))),
       });
     });
   } catch (err) {
@@ -109,7 +109,7 @@ export async function parseTenshohinCSV(file: File): Promise<RawTenshohinRow[]> 
             resolve(results.data || []);
           }
         },
-        error: (err) => reject(err),
+        error: (err: unknown) => reject(err instanceof Error ? err : new Error(String(err))),
       });
     });
   } catch (err) {
