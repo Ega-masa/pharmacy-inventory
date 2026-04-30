@@ -91,9 +91,14 @@ export async function parseTenshohinCSV(file: File): Promise<RawTenshohinRow[]> 
         header: true,
         skipEmptyLines: true,
         dynamicTyping: false,
+        // 列数がヘッダーより多い行を許容（Tenshohin CSVは211列ヘッダーに対し214列のデータ行が存在）
         complete: (results) => {
-          if (results.errors.length > 0) {
-            reject(new Error(`パースエラー: ${results.errors[0].message}`));
+          // "Too many fields" エラーは無視して処理を続行
+          const fatalErrors = results.errors.filter(
+            (e) => e.type !== "FieldMismatch"
+          );
+          if (fatalErrors.length > 0) {
+            reject(new Error(`パースエラー: ${fatalErrors[0].message}`));
           } else {
             resolve(results.data || []);
           }
