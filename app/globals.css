@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 255 255 255;
+  --foreground: 17 24 39;
+}
+
+body {
+  color: rgb(var(--foreground));
+  background: rgb(var(--background));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN",
+    "Hiragino Sans", Meiryo, sans-serif;
+}
+
+/* テーブル共通スタイル */
+.data-table {
+  @apply w-full text-sm border-collapse;
+}
+.data-table th {
+  @apply px-3 py-2 text-left bg-gray-100 border-b border-gray-300 font-semibold text-gray-700 sticky top-0;
+}
+.data-table td {
+  @apply px-3 py-2 border-b border-gray-200;
+}
+.data-table tr:hover {
+  @apply bg-blue-50;
+}
+
+/* リスクバッジ */
+.badge {
+  @apply inline-block px-2 py-0.5 rounded text-xs font-medium;
+}
+.badge-red { @apply bg-red-100 text-red-800; }
+.badge-orange { @apply bg-orange-100 text-orange-800; }
+.badge-yellow { @apply bg-yellow-100 text-yellow-800; }
+.badge-green { @apply bg-green-100 text-green-800; }
+.badge-gray { @apply bg-gray-100 text-gray-700; }

@@ -1,0 +1,11 @@
+# Phase 5で機能別画面コンポーネントを配置予定
+# - ReturnCandidatesView.tsx
+# - ExcessInventoryView.tsx
+# - ExpiryRiskView.tsx
+# - LongUnmovedView.tsx
+# - UnmovedAfterArrivalView.tsx
+# - MultiMakerView.tsx
+# - DiscontinuedView.tsx
+# - DeadStockRankingView.tsx
+# - DashboardView.tsx
+# - HistoryView.tsx
