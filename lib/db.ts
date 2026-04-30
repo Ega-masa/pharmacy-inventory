@@ -16,7 +16,9 @@ export const db = new PharmacyInventoryDB();
 
 /** 履歴を保存 */
 export async function saveHistory(record: Omit<HistoryRecord, "id">): Promise<number> {
-  return await db.history.add(record as HistoryRecord);
+  const id = await db.history.add(record as HistoryRecord);
+  if (id === undefined) throw new Error("履歴の保存に失敗しました");
+  return id as number;
 }
 
 /** 全履歴取得（新しい順） */
