@@ -316,35 +316,74 @@ function DeadStockView({ data }: { data: AllExtractResults["deadStock"]["items"]
 
 function MultiMakerView({ data }: { data: AllExtractResults["multiMaker"]["groups"] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
   const toggle = (k: string) => { const n = new Set(expanded); n.has(k) ? n.delete(k) : n.add(k); setExpanded(n); };
 
+  const filtered = search
+    ? data.filter((g) => g.グループキー.includes(search) || g.一般名.includes(search))
+    : data;
+
   return (
-    <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
-      <table className="data-table">
-        <thead><tr><th>成分名</th><th className="text-right">メーカー数</th><th className="text-right">合計在庫金額</th><th>推奨メーカー</th><th></th></tr></thead>
-        <tbody>
-          {data.map((g) => (
-            <React.Fragment key={g.一般名}>
-              <tr className="cursor-pointer" onClick={() => toggle(g.一般名)}>
-                <td className="font-semibold">{g.一般名}</td>
-                <td className="text-right"><span className="badge badge-orange">{g.メーカー数}社</span></td>
-                <td className="text-right font-semibold">{formatYen(g.合計在庫金額)}</td>
-                <td className="text-sm text-green-700">{g.推奨メーカー}</td>
-                <td className="text-gray-400">{expanded.has(g.一般名) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</td>
-              </tr>
-              {expanded.has(g.一般名) && g.品目リスト.map((item) => (
-                <tr key={item.商品コード} className="bg-blue-50 text-sm">
-                  <td className="pl-8 text-gray-600">{item.表示名}</td>
-                  <td className="text-center"><span className="badge badge-gray">{item.ABCランク}</span></td>
-                  <td className="text-right">{formatYen(item.在庫金額)}</td>
-                  <td className="text-gray-500">{item.月使用数 > 0 ? `月${formatNumber(item.月使用数, 0)}使用` : "不動"}</td>
-                  <td><span className="badge badge-gray text-xs">{item.ＣＳＶ後発品 || "-"}</span></td>
+    <div>
+      {/* ツールバー */}
+      <div className="flex items-center gap-3 p-3 border-b border-gray-200 bg-gray-50">
+        <div className="relative flex-1 min-w-[200px] max-w-[300px]">
+          <input type="text" placeholder="成分名・規格で検索..." value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-3 pr-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-400 outline-none" />
+        </div>
+        <span className="text-xs text-gray-500 ml-auto">
+          {filtered.length !== data.length ? `${filtered.length} / ${data.length}組合せ` : `${data.length}組合せ`}
+        </span>
+        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200">
+          後発品・同規格限定
+        </span>
+      </div>
+
+      <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>成分名・規格</th>
+              <th className="text-right">メーカー数</th>
+              <th className="text-right">合計在庫金額</th>
+              <th>推奨メーカー（使用数最多）</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} className="text-center py-8 text-gray-400">該当する組合せがありません</td></tr>
+            ) : filtered.map((g) => (
+              <React.Fragment key={g.グループキー}>
+                <tr className="cursor-pointer" onClick={() => toggle(g.グループキー)}>
+                  <td>
+                    <div className="font-semibold">{g.一般名}</div>
+                    {g.規格 && <div className="text-xs text-blue-600 font-medium mt-0.5">{g.規格}</div>}
+                  </td>
+                  <td className="text-right"><span className="badge badge-orange">{g.メーカー数}社</span></td>
+                  <td className="text-right font-semibold">{formatYen(g.合計在庫金額)}</td>
+                  <td className="text-sm text-green-700 font-medium">{g.推奨メーカー}</td>
+                  <td className="text-gray-400">{expanded.has(g.グループキー) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</td>
                 </tr>
-              ))}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
+                {expanded.has(g.グループキー) && g.品目リスト.map((item) => (
+                  <tr key={item.商品コード} className="bg-blue-50 text-sm">
+                    <td className="pl-8 text-gray-700">{item.表示名}</td>
+                    <td className="text-center"><span className="badge badge-gray">{item.ABCランク}</span></td>
+                    <td className="text-right">{formatYen(item.在庫金額)}</td>
+                    <td className="text-gray-500">
+                      {item.月使用数 > 0
+                        ? <span>月<b>{formatNumber(item.月使用数, 0)}</b>使用</span>
+                        : <span className="text-gray-400">不動</span>}
+                    </td>
+                    <td className="text-right text-xs text-gray-400">在庫{item.理論在庫}{item.単位}</td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

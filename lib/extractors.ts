@@ -182,42 +182,98 @@ export function extractUnmovedAfterArrival(
   return { category: "unmovedAfterArrival", items: result, ...calcTotal(result) };
 }
 
-// ─── ⑥ 複数メーカー保有 ──────────────────────
+// ─── ⑥ 複数メーカー保有（後発品・同規格限定） ──────────────────
 export interface MultiMakerGroup {
   一般名: string;
+  規格: string;          // グループキーの規格（mg等、または容量）
+  グループキー: string;   // 表示用キー "一般名 規格"
   メーカー数: number;
   品目リスト: InventoryItem[];
   合計在庫金額: number;
-  推奨メーカー: string;
+  推奨メーカー: string;   // 月使用数が最多のメーカー
 }
 
 export interface MultiMakerResult extends ExtractResult {
   groups: MultiMakerGroup[];
 }
 
+/**
+ * 規格グループキーを生成する
+ *
+ * 優先順：
+ *  1. InventoryItem.規格（品名から抽出したmg/mL等） → 最も正確
+ *  2. InventoryItem.容量（PTP 100T 等）             → 規格抽出できない配合剤向け
+ *  3. 空文字                                         → グループは一般名のみで識別
+ */
+function getSpecKey(item: InventoryItem): string {
+  if (item.規格 && item.規格.trim()) return item.規格.trim();
+  if (item.容量 && item.容量.trim()) return item.容量.trim();
+  return "";
+}
+
 export function extractMultiMakerItems(
   items: InventoryItem[],
   params: ExtractParams
 ): MultiMakerResult {
-  const named = items.filter((i) => i.一般名 && i.一般名.trim() !== "");
+  // ① 後発品かつ一般名あり に絞り込む
+  const kouhatsu = items.filter(
+    (i) =>
+      i.ＣＳＶ後発品 === "後発品" &&
+      i.一般名 &&
+      i.一般名.trim() !== ""
+  );
+
+  // ② 「一般名 + 規格キー」でグルーピング
   const groups = new Map<string, InventoryItem[]>();
-  for (const item of named) {
-    const key = item.一般名.trim();
+  for (const item of kouhatsu) {
+    const ippan = item.一般名.trim();
+    const spec = getSpecKey(item);
+    const key = spec ? `${ippan}\t${spec}` : ippan; // タブ区切りで結合
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(item);
   }
+
+  // ③ 同グループ内でメーカーが複数あるものだけ抽出
   const result: MultiMakerGroup[] = [];
-  for (const [ippanmei, groupItems] of groups) {
-    const makers = [...new Set(groupItems.map((i) => i.メーカー.trim()).filter(Boolean))];
+  for (const [key, groupItems] of groups) {
+    const makers = [
+      ...new Set(groupItems.map((i) => i.メーカー.trim()).filter(Boolean)),
+    ];
     if (makers.length < params.複数メーカー_社数下限) continue;
+
+    const [ippanmei, specLabel] = key.includes("\t")
+      ? key.split("\t")
+      : [key, ""];
+
     const totalAmount = groupItems.reduce((s, i) => s + i.在庫金額, 0);
+    // 推奨メーカー：月使用数最大（同数なら在庫金額最大）
     const recommended = groupItems.reduce((best, cur) =>
-      cur.月使用数 > best.月使用数 ? cur : best
+      cur.月使用数 > best.月使用数 ||
+      (cur.月使用数 === best.月使用数 && cur.在庫金額 > best.在庫金額)
+        ? cur
+        : best
     );
-    result.push({ 一般名: ippanmei, メーカー数: makers.length, 品目リスト: groupItems, 合計在庫金額: totalAmount, 推奨メーカー: recommended.メーカー });
+
+    result.push({
+      一般名: ippanmei,
+      規格: specLabel,
+      グループキー: specLabel ? `${ippanmei} ${specLabel}` : ippanmei,
+      メーカー数: makers.length,
+      品目リスト: groupItems,
+      合計在庫金額: totalAmount,
+      推奨メーカー: recommended.メーカー,
+    });
   }
+
   result.sort((a, b) => b.合計在庫金額 - a.合計在庫金額);
-  return { category: "multiMaker", groups: result, totalCount: result.length, totalAmount: result.reduce((s, g) => s + g.合計在庫金額, 0), averageAmount: 0, items: [] };
+  return {
+    category: "multiMaker",
+    groups: result,
+    totalCount: result.length,
+    totalAmount: result.reduce((s, g) => s + g.合計在庫金額, 0),
+    averageAmount: 0,
+    items: [],
+  };
 }
 
 // ─── A 製造中止・経過措置 ─────────────────────
