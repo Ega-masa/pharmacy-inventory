@@ -73,23 +73,17 @@ export function extractSpec(productName: string): string {
   return "";
 }
 
-/** 表示名生成 "成分名（メーカー）容量" */
+/** 表示名生成 "品名（メーカー）" */
 export function buildDisplayName(opts: {
   一般名: string;
   メーカー: string;
   容量: string;
   品名: string;
 }): string {
-  const { 一般名, メーカー, 容量, 品名 } = opts;
-  const seibun = (一般名 || "").trim();
+  const { メーカー, 品名 } = opts;
+  const name = (品名 || "").trim();
   const maker = (メーカー || "").trim();
-  const cap = (容量 || "").trim();
 
-  if (!seibun) {
-    // 一般名がなければ品名フォールバック
-    return [品名 || "(無名)", maker ? `（${maker}）` : "", cap ? ` ${cap}` : ""]
-      .join("")
-      .trim();
-  }
-  return `${seibun}${maker ? `（${maker}）` : ""}${cap ? ` ${cap}` : ""}`;
+  if (!name) return "(無名)";
+  return `${name}${maker ? `（${maker}）` : ""}`;
 }
