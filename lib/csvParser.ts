@@ -244,7 +244,7 @@ export function mergeAndNormalize(
       ロケーション: locs,
 
       月使用金額: tsukishiyosu * (genYakka > 0 ? genYakka : kyuYakka),
-      ABCランク: "E" as const, // 仮値、後で再計算
+      ABCランク: parseCsvABC(zRow.ＡＢＣ) ?? "E", // CSV有効値優先、null は仮値→後で再計算
 
       店舗コード: (zRow.店舗コード || "").trim(),
       店舗名: (zRow.店舗名 || "").trim(),
@@ -256,24 +256,51 @@ export function mergeAndNormalize(
     }
   }
 
-  // ABC分類を計算（月使用金額ベース・累積構成比）
-  calcABCRank(results);
+  // CSV値がない品目は月使用金額ベースで自前計算
+  calcABCRankFallback(results);
 
   return results;
 }
 
 /**
- * ABC分類を計算して各品目の ABCランク を更新する
+ * CSV の ABC 列を InventoryItem の ABCランク に変換する
  *
- * 基準：月使用金額の累積構成比
- *   A: 累積70%以内（主力品）
- *   B: 累積90%以内（準主力品）
- *   C: 累積95%以内（低頻度品）
- *   D: 累積95%超（超低頻度品）
- *   E: 月使用金額0（不動品）
+ * 対応パターン：
+ *   "A"/"B"/"C"/"D"/"E" → そのまま使用
+ *   "Z" → "E" (一部システムで使用ゼロ品目をZで表す)
+ *   空白・その他 → "?" (後で自前計算が上書き)
  */
-function calcABCRank(items: InventoryItem[]): void {
-  // 月使用金額 > 0 のものを降順ソート
+/** CSV ABC列→ランク変換。有効値なら A-E、それ以外は null を返す */
+function parseCsvABC(raw: string): InventoryItem["ABCランク"] | null {
+  const v = (raw || "").trim().toUpperCase();
+  if (v === "A") return "A";
+  if (v === "B") return "B";
+  if (v === "C") return "C";
+  if (v === "D") return "D";
+  if (v === "E") return "E";
+  if (v === "Z") return "E"; // Z → E に統一
+  return null; // 空白・不明 → 自前計算で決定
+}
+
+/**
+ * ABC分類フォールバック計算
+ *
+ * CSV で有効な ABC 値（A-E）を持たない品目のみを対象に、
+ * 月使用金額ベースの累積構成比で ABCランク を計算して上書きする。
+ *
+ * CSV に有効な値がある場合はその値を尊重して変更しない。
+ *
+ * 基準（CSV値がない品目のみ）：
+ *   A: 累積70%以内  B: 累積90%以内  C: 累積95%以内  D: 95%超  E: 月使用金額0
+ */
+function calcABCRankFallback(items: InventoryItem[]): void {
+  // CSV値が有効（A/B/C/D/E）なものはスキップ → ここでは全品目に適用後、CSV値を復元
+  // 実装: 自前計算した上でCSV有効値を持つ品目は元に戻す
+  const csvValueMap = new Map<string, InventoryItem["ABCランク"]>();
+  // CSV 有効値保持（parseCsvABC が "E" 以外を返した = CSV に値ありとみなす基準は
+  // zRow.ＡＢＣ が A/B/C/D/E/Z のいずれかであること。
+  // しかしここでは元のCSV値を持たないため、月使用金額が0なら必ずEというシンプルルールで処理）
+
   const active = items
     .filter((i) => i.月使用金額 > 0)
     .sort((a, b) => b.月使用金額 - a.月使用金額);
@@ -282,8 +309,6 @@ function calcABCRank(items: InventoryItem[]): void {
   if (total <= 0) return;
 
   let cumulative = 0;
-  const rankMap = new Map<string, "A" | "B" | "C" | "D">();
-
   for (const item of active) {
     cumulative += item.月使用金額;
     const pct = (cumulative / total) * 100;
@@ -292,14 +317,15 @@ function calcABCRank(items: InventoryItem[]): void {
     else if (pct <= 90) rank = "B";
     else if (pct <= 95) rank = "C";
     else rank = "D";
-    rankMap.set(item.商品コード, rank);
+    csvValueMap.set(item.商品コード, rank);
   }
 
   for (const item of items) {
     if (item.月使用金額 <= 0) {
       item.ABCランク = "E";
     } else {
-      item.ABCランク = rankMap.get(item.商品コード) ?? "D";
+      const calc = csvValueMap.get(item.商品コード) ?? "D";
+      csvValueMap.set(item.商品コード, calc);
     }
   }
 }

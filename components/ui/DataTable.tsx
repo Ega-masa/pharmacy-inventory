@@ -15,7 +15,7 @@ export interface Column<T> {
   render?: (item: T, index?: number) => React.ReactNode;
 }
 
-interface DataTableProps<T> {
+interface DataTableProps<T extends object> {
   columns: Column<T>[];
   data: T[];
   keyField: string;
@@ -32,7 +32,7 @@ interface DataTableProps<T> {
 type SortDir = "asc" | "desc" | null;
 
 // ─── コンポーネント ──────────────────────────
-export default function DataTable<T extends Record<string, unknown>>({
+export default function DataTable<T extends object>({
   columns,
   data,
   keyField,
@@ -202,7 +202,7 @@ export default function DataTable<T extends Record<string, unknown>>({
               </tr>
             ) : (
               processed.map((item, rowIdx) => (
-                <tr key={String(item[keyField])}>
+                <tr key={String((item as Record<string, unknown>)[keyField])}>
                   {columns.map((col) => (
                     <td key={col.key}
                       className={col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""}>
