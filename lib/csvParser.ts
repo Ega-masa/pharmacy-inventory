@@ -243,6 +243,9 @@ export function mergeAndNormalize(
       薬効分類名: (tRow.薬効分類名 || "").trim(),
       ロケーション: locs,
 
+      月使用金額: tsukishiyosu * (genYakka > 0 ? genYakka : kyuYakka),
+      ABCランク: "E" as const, // 仮値、後で再計算
+
       店舗コード: (zRow.店舗コード || "").trim(),
       店舗名: (zRow.店舗名 || "").trim(),
     };
@@ -253,5 +256,50 @@ export function mergeAndNormalize(
     }
   }
 
+  // ABC分類を計算（月使用金額ベース・累積構成比）
+  calcABCRank(results);
+
   return results;
+}
+
+/**
+ * ABC分類を計算して各品目の ABCランク を更新する
+ *
+ * 基準：月使用金額の累積構成比
+ *   A: 累積70%以内（主力品）
+ *   B: 累積90%以内（準主力品）
+ *   C: 累積95%以内（低頻度品）
+ *   D: 累積95%超（超低頻度品）
+ *   E: 月使用金額0（不動品）
+ */
+function calcABCRank(items: InventoryItem[]): void {
+  // 月使用金額 > 0 のものを降順ソート
+  const active = items
+    .filter((i) => i.月使用金額 > 0)
+    .sort((a, b) => b.月使用金額 - a.月使用金額);
+
+  const total = active.reduce((s, i) => s + i.月使用金額, 0);
+  if (total <= 0) return;
+
+  let cumulative = 0;
+  const rankMap = new Map<string, "A" | "B" | "C" | "D">();
+
+  for (const item of active) {
+    cumulative += item.月使用金額;
+    const pct = (cumulative / total) * 100;
+    let rank: "A" | "B" | "C" | "D";
+    if (pct <= 70) rank = "A";
+    else if (pct <= 90) rank = "B";
+    else if (pct <= 95) rank = "C";
+    else rank = "D";
+    rankMap.set(item.商品コード, rank);
+  }
+
+  for (const item of items) {
+    if (item.月使用金額 <= 0) {
+      item.ABCランク = "E";
+    } else {
+      item.ABCランク = rankMap.get(item.商品コード) ?? "D";
+    }
+  }
 }

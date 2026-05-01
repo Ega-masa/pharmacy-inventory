@@ -121,6 +121,10 @@ export interface InventoryItem {
   薬効分類名: string;
   ロケーション: string; // ロケーション1〜3を結合
 
+  // ABC分類（月使用金額ベースで自前計算）
+  月使用金額: number; // 月使用数 × 薬価
+  ABCランク: "A" | "B" | "C" | "D" | "E";
+
   // メタ
   店舗コード: string;
   店舗名: string;
@@ -143,6 +147,10 @@ export interface ExtractParams {
   入荷後不動_経過日数下限: number; // デフォルト 90
   複数メーカー_社数下限: number; // デフォルト 2
   在庫月数_算出方法: "csv" | "calc"; // CSV値かシステム再計算か
+  高額品_単価下限: number; // デフォルト 100（円）
+  高額不動_経過日数下限: number; // デフォルト 90（日）
+  高額アクティブ_経過日数上限: number; // デフォルト 90（日）
+  高額品_ABCランク下限: "A" | "B" | "C" | "D" | "E"; // デフォルト "D"
 }
 
 export const DEFAULT_PARAMS: ExtractParams = {
@@ -153,6 +161,10 @@ export const DEFAULT_PARAMS: ExtractParams = {
   入荷後不動_経過日数下限: 90,
   複数メーカー_社数下限: 2,
   在庫月数_算出方法: "calc",
+  高額品_単価下限: 100,
+  高額不動_経過日数下限: 90,
+  高額アクティブ_経過日数上限: 90,
+  高額品_ABCランク下限: "D",
 };
 
 // ========================================
@@ -167,7 +179,9 @@ export interface ExtractResult<T = InventoryItem> {
     | "unmovedAfterArrival"
     | "multiMaker"
     | "discontinued"
-    | "deadStock";
+    | "deadStock"
+    | "highValueInactive"
+    | "highValueActive";
   items: T[];
   totalCount: number;
   totalAmount: number;
@@ -195,6 +209,8 @@ export interface HistoryRecord {
     multiMaker: { count: number };
     discontinued: { count: number; amount: number };
     deadStock: { count: number; amount: number };
+    highValueInactive: { count: number; amount: number };
+    highValueActive: { count: number; amount: number };
   };
   params: ExtractParams;
 }
