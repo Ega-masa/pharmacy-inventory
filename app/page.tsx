@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Upload, AlertCircle, CheckCircle2, Loader2, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import type { InventoryItem, ExtractParams } from "@/types";
 import { DEFAULT_PARAMS } from "@/types";
@@ -324,24 +324,24 @@ function MultiMakerView({ data }: { data: AllExtractResults["multiMaker"]["group
         <thead><tr><th>成分名</th><th className="text-right">メーカー数</th><th className="text-right">合計在庫金額</th><th>推奨メーカー</th><th></th></tr></thead>
         <tbody>
           {data.map((g) => (
-            <tr key={g.一般名} className="cursor-pointer" onClick={() => toggle(g.一般名)}>
+            <React.Fragment key={g.一般名}>
+              <tr className="cursor-pointer" onClick={() => toggle(g.一般名)}>
                 <td className="font-semibold">{g.一般名}</td>
                 <td className="text-right"><span className="badge badge-orange">{g.メーカー数}社</span></td>
                 <td className="text-right font-semibold">{formatYen(g.合計在庫金額)}</td>
                 <td className="text-sm text-green-700">{g.推奨メーカー}</td>
                 <td className="text-gray-400">{expanded.has(g.一般名) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</td>
               </tr>
-              {/* サブ行はJSXフラグメントではなくconditionalで表示 */}
-            </tr>
-            {expanded.has(g.一般名) && g.品目リスト.map((item) => (
-              <tr key={item.商品コード} className="bg-blue-50 text-sm">
-                <td className="pl-8 text-gray-600">{item.表示名}</td>
-                <td className="text-center"><span className="badge badge-gray">{item.ABCランク}</span></td>
-                <td className="text-right">{formatYen(item.在庫金額)}</td>
-                <td className="text-gray-500">{item.月使用数 > 0 ? `月${formatNumber(item.月使用数, 0)}使用` : "不動"}</td>
-                <td><span className="badge badge-gray text-xs">{item.ＣＳＶ後発品 || "-"}</span></td>
-              </tr>
-            ))}
+              {expanded.has(g.一般名) && g.品目リスト.map((item) => (
+                <tr key={item.商品コード} className="bg-blue-50 text-sm">
+                  <td className="pl-8 text-gray-600">{item.表示名}</td>
+                  <td className="text-center"><span className="badge badge-gray">{item.ABCランク}</span></td>
+                  <td className="text-right">{formatYen(item.在庫金額)}</td>
+                  <td className="text-gray-500">{item.月使用数 > 0 ? `月${formatNumber(item.月使用数, 0)}使用` : "不動"}</td>
+                  <td><span className="badge badge-gray text-xs">{item.ＣＳＶ後発品 || "-"}</span></td>
+                </tr>
+              ))}
+            </React.Fragment>
           ))}
         </tbody>
       </table>
