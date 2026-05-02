@@ -7,6 +7,7 @@ import {
   HelpCircle, X as XIcon, Info
 } from "lucide-react";
 import { HELP } from "@/lib/helpContent";
+import { calcPriorities, type PriorityItem } from "@/lib/priorityEngine";
 import type { InventoryItem, ExtractParams } from "@/types";
 import { DEFAULT_PARAMS } from "@/types";
 import { parseZaikoCSV, parseTenshohinCSV, mergeAndNormalize } from "@/lib/csvParser";
@@ -263,6 +264,120 @@ export default function HomePage() {
   );
 }
 
+/* ─── 優先対応パネル ────────────────────── */
+const BADGE_BG: Record<string, string> = {
+  red: "bg-red-100 text-red-800 border-red-200",
+  orange: "bg-orange-100 text-orange-800 border-orange-200",
+  yellow: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  blue: "bg-blue-100 text-blue-800 border-blue-200",
+  gray: "bg-gray-100 text-gray-700 border-gray-200",
+};
+const SCORE_BAR: Record<string, string> = {
+  red: "bg-red-400", orange: "bg-orange-400",
+  yellow: "bg-yellow-400", blue: "bg-blue-400", gray: "bg-gray-300",
+};
+
+function PriorityPanel({
+  results, totalAmount, onDetail,
+}: {
+  results: AllExtractResults;
+  totalAmount: number;
+  onDetail: (v: DetailView) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const priorities = useMemo(
+    () => calcPriorities(results, totalAmount),
+    [results, totalAmount]
+  );
+  const active = priorities.filter((p) => !p.skip);
+  const skipped = priorities.filter((p) => p.skip);
+
+  return (
+    <div className="bg-white rounded-lg shadow mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 rounded-lg transition"
+      >
+        <span className="text-base">📋</span>
+        <span>推奨対応順位</span>
+        <span className="text-xs font-normal text-gray-500 ml-1">— 今日やるべきことをスコアで自動計算</span>
+        <span className="ml-auto flex items-center gap-2">
+          {active.length > 0 && (
+            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">
+              {active.length}件の対応あり
+            </span>
+          )}
+          <span className="text-gray-400">{open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100">
+          {/* スコア説明 */}
+          <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
+            スコア＝ <b>緊急度</b>（締め切り・期限）×40% ＋ <b>金額インパクト</b>×40% ＋ <b>対応可能性</b>×20% で計算
+          </div>
+
+          {active.length === 0 ? (
+            <div className="px-4 py-6 text-center text-gray-400 text-sm">
+              現在、緊急対応が必要な項目はありません。
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {active.map((p, idx) => (
+                <button
+                  key={p.view}
+                  onClick={() => onDetail(p.view as DetailView)}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-blue-50 transition text-left"
+                >
+                  {/* 順位 */}
+                  <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mt-0.5
+                    bg-gray-100 text-gray-700">
+                    {idx + 1}
+                  </div>
+
+                  {/* メイン */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-sm text-gray-800">{p.label}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${BADGE_BG[p.badgeColor]}`}>
+                        {p.totalCount}件
+                        {p.urgentCount > 0 && <span className="ml-1 font-bold">（急ぎ{p.urgentCount}件）</span>}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-auto">{p.totalAmount > 0 && `¥${p.totalAmount.toLocaleString()}`}</span>
+                    </div>
+                    <div className="text-xs text-gray-600 mb-1.5">{p.reason}</div>
+                    <div className="text-xs text-blue-700 font-medium">▶ {p.action}</div>
+                  </div>
+
+                  {/* スコアバー */}
+                  <div className="shrink-0 w-16 text-right">
+                    <div className="text-lg font-bold text-gray-800">{p.score}</div>
+                    <div className="w-16 h-1.5 bg-gray-100 rounded-full mt-1">
+                      <div
+                        className={`h-1.5 rounded-full ${SCORE_BAR[p.badgeColor]}`}
+                        style={{ width: `${p.score}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">点</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 対応不要項目 */}
+          {skipped.length > 0 && (
+            <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+              対象なし: {skipped.map((p) => p.label).join("、")}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── ダッシュボード パラメータパネル ─── */
 function DashboardParamsPanel({ params, onChange }: { params: ExtractParams; onChange: (p: ExtractParams) => void }) {
   const [open, setOpen] = useState(false);
@@ -392,6 +507,7 @@ function DashboardPage({ results, totalItems, totalAmount, params, onParamsChang
         <div className="bg-white rounded-lg shadow p-3"><div className="text-xs text-gray-500">要対応金額</div><div className="text-xl font-bold text-red-600">{formatYen(results.deadStock.totalAmount)}</div></div>
         <div className="bg-white rounded-lg shadow p-3"><div className="text-xs text-gray-500">高額品在庫</div><div className="text-xl font-bold text-purple-600">{formatYen((ga("highValueInactive")??0)+(ga("highValueActive")??0))}</div></div>
       </div>
+      <PriorityPanel results={results} totalAmount={totalAmount} onDetail={onDetail} />
       <DashboardParamsPanel params={params} onChange={onParamsChange} />
       <div className="grid grid-cols-2 gap-3">
         {SECTIONS.map(({ key, label, color, unit }) => {
