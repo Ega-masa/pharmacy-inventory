@@ -535,7 +535,7 @@ const SECTIONS: { key: DetailView; label: string; color: string; unit?: string }
   { key: "deadStock",           label: "B デッドストックTOP30", color: "border-gray-800" },
 ];
 
-function DashboardPage({ results, totalItems, totalAmount, params, onParamsChange, onDetail, onReset }: {
+function DashboardPage({ results, totalItems, totalAmount, params, onParamsChange, onDetail, onHistory, onReset }: {
   results: AllExtractResults; totalItems: number; totalAmount: number;
   params: ExtractParams; onParamsChange: (p: ExtractParams) => void;
   onDetail: (v: DetailView, fromPriority?: boolean) => void;
