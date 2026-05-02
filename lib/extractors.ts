@@ -46,6 +46,8 @@ export function extractReturnCandidates(
   const result: ReturnCandidateItem[] = [];
   for (const item of items) {
     if (!item.最終入庫日) continue;
+    // 麻薬・覚醒剤は返品手続きが特殊なため除外（卸通常返品の対象外）
+    if (item.薬品区分_処理可否 === "処理不可") continue;
     const elapsed = daysSince(item.最終入庫日, today) ?? 0;
     if (elapsed < params.返品_経過日数下限) continue;
     const noRxAfterArrival = item.最終処方日 === null || item.最終処方日 < item.最終入庫日;
@@ -369,7 +371,11 @@ export function extractHighValueInactive(
   for (const item of items) {
     const yakka = item.現薬価 || item.旧薬価 || 0;
     if (yakka < params.高額品_単価下限) continue;
-    if (ABC_ORDER[item.ABCランク] < ABC_ORDER[minRank]) continue;
+    // 麻薬・覚醒剤は在庫処理不可のため除外（法的管理対象）
+    if (item.薬品区分_処理可否 === "処理不可") continue;
+    // 生物由来は ABCランクに関係なく対象（高額定期確認対象）
+    const isSeibut = item.薬品区分 === "生物由来";
+    if (!isSeibut && ABC_ORDER[item.ABCランク] < ABC_ORDER[minRank]) continue;
     let noRxDays: number;
     let hasNoHistory: boolean;
     if (item.最終処方日 === null) { noRxDays = 9999; hasNoHistory = true; }
@@ -403,7 +409,10 @@ export function extractHighValueActive(
   for (const item of items) {
     const yakka = item.現薬価 || item.旧薬価 || 0;
     if (yakka < params.高額品_単価下限) continue;
-    if (ABC_ORDER[item.ABCランク] < ABC_ORDER[minRank]) continue;
+    // 麻薬・覚醒剤は除外（在庫処理不可）
+    if (item.薬品区分_処理可否 === "処理不可") continue;
+    const isSeibut = item.薬品区分 === "生物由来";
+    if (!isSeibut && ABC_ORDER[item.ABCランク] < ABC_ORDER[minRank]) continue;
     if (!item.最終処方日) continue;
     const elapsed = daysSince(item.最終処方日, today) ?? 9999;
     if (elapsed > params.高額アクティブ_経過日数上限) continue;

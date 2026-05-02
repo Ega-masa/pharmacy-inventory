@@ -22,7 +22,7 @@ import {
 } from "@/lib/extractors";
 import { formatYen, formatDate, formatNumber } from "@/lib/utils";
 import { saveHistory, getAllHistory, deleteHistory, type HistoryRecordWithId } from "@/lib/db";
-import DataTable, { type Column, AbcFilter, AmountFilter } from "@/components/ui/DataTable";
+import DataTable, { type Column, AbcFilter, AmountFilter, DrugClassFilter, DrugClassBadge, type DrugClass, ALL_DRUG_CLASSES } from "@/components/ui/DataTable";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -31,6 +31,7 @@ import {
 type PageState = "upload" | "loading" | "dashboard" | "detail" | "history";
 type DetailView = keyof AllExtractResults;
 const ALL_ABC = new Set(["A","B","C","D","E"]);
+const ALL_DRUG_SET = () => new Set(ALL_DRUG_CLASSES as DrugClass[]);
 
 const BADGE_COLORS: Record<string, string> = {
   red: "badge badge-red", orange: "badge badge-orange",
@@ -313,6 +314,38 @@ export default function HomePage() {
   );
 }
 
+/* ─── 薬品区分サマリカード ─────────────────── */
+function DrugClassSummaryCard({ results }: { results: AllExtractResults }) {
+  // deadStock の品目から薬品区分の分布を取得
+  const allItems = results.deadStock.items;
+  const counts = { 麻薬: 0, 覚醒剤: 0, 向精神: 0, 毒薬: 0, 劇薬: 0, 生物由来: 0, その他: 0 };
+  allItems.forEach((i) => {
+    if (i.薬品区分 in counts) counts[i.薬品区分 as keyof typeof counts]++;
+  });
+  const hasRestricted = counts.麻薬 + counts.覚醒剤 > 0;
+  const hasRequireProc = counts.向精神 + counts.毒薬 + counts.劇薬 > 0;
+  const hasBio = counts.生物由来 > 0;
+  return (
+    <div className={`bg-white rounded-lg shadow p-3 ${hasRestricted ? "border-l-4 border-purple-400" : hasBio ? "border-l-4 border-blue-400" : ""}`}>
+      <div className="text-xs text-gray-500 mb-1">要注意品（要対応中）</div>
+      <div className="flex flex-col gap-0.5 text-xs">
+        {hasRestricted && (
+          <span className="text-purple-700 font-medium">🔒 麻薬/{counts.麻薬} 覚醒剤/{counts.覚醒剤}</span>
+        )}
+        {hasRequireProc && (
+          <span className="text-orange-700">⚠️ 劇/{counts.劇薬} 向/{counts.向精神} 毒/{counts.毒薬}</span>
+        )}
+        {hasBio && (
+          <span className="text-blue-700">🧬 生物由来/{counts.生物由来}</span>
+        )}
+        {!hasRestricted && !hasRequireProc && !hasBio && (
+          <span className="text-gray-400">なし</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── 優先対応パネル ────────────────────── */
 const BADGE_BG: Record<string, string> = {
   red: "bg-red-100 text-red-800 border-red-200",
@@ -365,6 +398,7 @@ function PriorityPanel({
           {/* スコア説明 */}
           <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
             スコア＝ <b>緊急度</b>（締め切り・期限）×40% ＋ <b>金額インパクト</b>×40% ＋ <b>対応可能性</b>×20% で計算
+          <span className="ml-3 text-orange-500">※ 麻薬・覚醒剤は処理不可のため除外済み</span>
           </div>
 
           {active.length === 0 ? (
@@ -553,11 +587,12 @@ function DashboardPage({ results, totalItems, totalAmount, params, onParamsChang
           <button onClick={onReset} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm text-gray-600"><ArrowLeft size={14} /> 新しいCSV</button>
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-5 gap-3 mb-4">
         <div className="bg-white rounded-lg shadow p-3"><div className="text-xs text-gray-500">在庫品目数</div><div className="text-xl font-bold">{totalItems.toLocaleString()}</div></div>
         <div className="bg-white rounded-lg shadow p-3"><div className="text-xs text-gray-500">総在庫金額</div><div className="text-xl font-bold text-blue-600">{formatYen(totalAmount)}</div></div>
         <div className="bg-white rounded-lg shadow p-3"><div className="text-xs text-gray-500">要対応金額</div><div className="text-xl font-bold text-red-600">{formatYen(results.deadStock.totalAmount)}</div></div>
         <div className="bg-white rounded-lg shadow p-3"><div className="text-xs text-gray-500">高額品在庫</div><div className="text-xl font-bold text-purple-600">{formatYen((ga("highValueInactive")??0)+(ga("highValueActive")??0))}</div></div>
+        <DrugClassSummaryCard results={results} />
       </div>
       <PriorityPanel results={results} totalAmount={totalAmount} onDetail={onDetail} />
       <DashboardParamsPanel params={params} onChange={onParamsChange} />
@@ -699,6 +734,7 @@ const searchFn = (item: { 表示名: string; 品名: string; メーカー: strin
 /* ─── ① 返品推奨 ─── */
 function ReturnView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["return"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [amtMin, setAmtMin] = useState(0);
   const [amtMax, setAmtMax] = useState(Infinity);
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
@@ -710,6 +746,7 @@ function ReturnView({ data: _data, inventoryData, localParams, globalParams, fro
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b>{formatYen(i.在庫金額)}</b> },
     { key: "経過日数", label: "入庫経過日", align: "right", getValue: (i) => i.経過日数 },
@@ -724,8 +761,8 @@ function ReturnView({ data: _data, inventoryData, localParams, globalParams, fro
       </PageParamPanel>
       {urgentCount > 0 && <UrgentToggle urgentOnly={urgentOnly} urgentCount={urgentCount} totalCount={data.length} onChange={setUrgentOnly} />}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="return_candidates.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? i.返品期限残日数 <= 10 : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax === Infinity ? 0 : amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? i.返品期限残日数 <= 10 : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax === Infinity ? 0 : amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -733,6 +770,7 @@ function ReturnView({ data: _data, inventoryData, localParams, globalParams, fro
 /* ─── ② 過剰在庫 ─── */
 function ExcessView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["excess"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
@@ -740,6 +778,7 @@ function ExcessView({ data: _data, inventoryData, localParams, globalParams, fro
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "月使用数", label: "月使用数", align: "right", getValue: (i) => i.月使用数 },
     { key: "在庫月数", label: "在庫月数", align: "right", getValue: (i) => i.在庫月数_表示, render: (i) => <b>{i.在庫月数_表示 >= 999 ? "∞" : formatNumber(i.在庫月数_表示)}M</b> },
@@ -761,8 +800,8 @@ function ExcessView({ data: _data, inventoryData, localParams, globalParams, fro
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.在庫月数_表示 >= 12).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="excess_inventory.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.在庫月数_表示 >= 12) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.在庫月数_表示 >= 12) : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -770,6 +809,7 @@ function ExcessView({ data: _data, inventoryData, localParams, globalParams, fro
 /* ─── ③ 廃棄リスク ─── */
 function ExpiryView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["expiry"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
@@ -777,6 +817,7 @@ function ExpiryView({ data: _data, inventoryData, localParams, globalParams, fro
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b>{formatYen(i.在庫金額)}</b> },
     { key: "最終有効期限", label: "有効期限", getValue: (i) => i.最終有効期限 },
@@ -791,8 +832,8 @@ function ExpiryView({ data: _data, inventoryData, localParams, globalParams, fro
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.残日数 <= 30).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="expiry_risk.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.残日数 <= 30) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.残日数 <= 30) : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -800,6 +841,7 @@ function ExpiryView({ data: _data, inventoryData, localParams, globalParams, fro
 /* ─── ④ 長期不動品 ─── */
 function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["longUnmoved"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
@@ -807,6 +849,7 @@ function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b>{formatYen(i.在庫金額)}</b> },
     { key: "最終処方日", label: "最終処方日", getValue: (i) => i.最終処方日, render: (i) => i.処方履歴なし ? <span className="badge badge-red">履歴なし</span> : <span>{formatDate(i.最終処方日)}</span> },
@@ -820,8 +863,8 @@ function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.処方履歴なし || i.不動日数 >= 365).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="long_unmoved.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.処方履歴なし || i.不動日数 >= 365) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.処方履歴なし || i.不動日数 >= 365) : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -829,6 +872,7 @@ function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams
 /* ─── ⑤ 入荷後不動品 ─── */
 function UnmovedView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["unmovedAfterArrival"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
@@ -836,6 +880,7 @@ function UnmovedView({ data: _data, inventoryData, localParams, globalParams, fr
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b>{formatYen(i.在庫金額)}</b> },
     { key: "最終入庫日", label: "最終入庫日", getValue: (i) => i.最終入庫日 },
@@ -849,8 +894,8 @@ function UnmovedView({ data: _data, inventoryData, localParams, globalParams, fr
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.処方履歴なし).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="unmoved_after_arrival.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.処方履歴なし) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.処方履歴なし) : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -858,12 +903,14 @@ function UnmovedView({ data: _data, inventoryData, localParams, globalParams, fr
 /* ─── A 製造中止 ─── */
 function DiscontinuedView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["discontinued"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const data = useMemo((): DiscontinuedItem[] => extractDiscontinued(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b>{formatYen(i.在庫金額)}</b> },
     { key: "製造中止日", label: "製造中止日", getValue: (i) => i.製造中止日, render: (i) => i.製造中止日 ? <span className="text-red-600 font-medium">{formatDate(i.製造中止日)}</span> : <span>-</span> },
@@ -879,8 +926,8 @@ function DiscontinuedView({ data: _data, inventoryData, localParams, globalParam
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.製造中止日 !== null).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="discontinued.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.製造中止日 !== null) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.製造中止日 !== null) : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -888,6 +935,7 @@ function DiscontinuedView({ data: _data, inventoryData, localParams, globalParam
 /* ─── C 高額不動品 ─── */
 function HighValueInactiveView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["highValueInactive"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
@@ -895,6 +943,7 @@ function HighValueInactiveView({ data: _data, inventoryData, localParams, global
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "現薬価", label: "単価", align: "right", getValue: (i) => i.現薬価||i.旧薬価, render: (i) => <span>{formatYen(i.現薬価||i.旧薬価)}</span> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b className="text-red-600">{formatYen(i.在庫金額)}</b> },
@@ -919,8 +968,8 @@ function HighValueInactiveView({ data: _data, inventoryData, localParams, global
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.警告レベル === "red").length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="high_value_inactive.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.警告レベル === "red") : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.警告レベル === "red") : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -928,6 +977,7 @@ function HighValueInactiveView({ data: _data, inventoryData, localParams, global
 /* ─── D 高額アクティブ ─── */
 function HighValueActiveView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["highValueActive"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
@@ -935,6 +985,7 @@ function HighValueActiveView({ data: _data, inventoryData, localParams, globalPa
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "現薬価", label: "単価", align: "right", getValue: (i) => i.現薬価||i.旧薬価, render: (i) => <span>{formatYen(i.現薬価||i.旧薬価)}</span> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b>{formatYen(i.在庫金額)}</b> },
@@ -959,8 +1010,8 @@ function HighValueActiveView({ data: _data, inventoryData, localParams, globalPa
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.月使用数 > 0 && i.在庫月数_計算値 > 3).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="high_value_active.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.月使用数 > 0 && i.在庫月数_計算値 > 3) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.月使用数 > 0 && i.在庫月数_計算値 > 3) : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
@@ -968,6 +1019,7 @@ function HighValueActiveView({ data: _data, inventoryData, localParams, globalPa
 /* ─── B デッドストック ─── */
 function DeadStockView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["deadStock"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [drug, setDrug] = useState<Set<DrugClass>>(ALL_DRUG_SET());
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const data = useMemo((): DeadStockItem[] => extractDeadStockRanking(inventoryData, localParams, 100).items, [inventoryData, localParams]);
@@ -975,6 +1027,7 @@ function DeadStockView({ data: _data, inventoryData, localParams, globalParams, 
     { key: "rank", label: "#", align: "right", sortable: false, getValue: (_,i) => (i??0)+1, render: (_,i) => <span className="text-gray-500 font-bold">{(i??0)+1}</span> },
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
+    { key: "薬品区分", label: "区分", align: "center", sortable: true, getValue: (i) => i.薬品区分, render: (i) => <DrugClassBadge kubun={i.薬品区分} /> },
     { key: "理論在庫", label: "在庫数", align: "right", getValue: (i) => i.理論在庫 },
     { key: "在庫金額", label: "在庫金額", align: "right", getValue: (i) => i.在庫金額, render: (i) => <b className="text-red-600">{formatYen(i.在庫金額)}</b> },
     { key: "リスク区分", label: "リスク区分", sortable: false, getValue: (i) => i.リスク区分.length, render: (i) => <div className="flex flex-wrap gap-1">{i.リスク区分.map((b) => <span key={b} className={RISK_BADGE_COLOR[b]}>{b}</span>)}</div> },
@@ -987,8 +1040,8 @@ function DeadStockView({ data: _data, inventoryData, localParams, globalParams, 
       </PageParamPanel>
       {(() => { const uc = data.filter((i) => i.リスク区分.length >= 2).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="deadstock_ranking.csv" getSearchText={searchFn}
-        extraFilter={(i) => (urgentOnly ? (i.リスク区分.length >= 2) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
-        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
+        extraFilter={(i) => (urgentOnly ? (i.リスク区分.length >= 2) : true) && abc.has(i.ABCランク) && drug.has(i.薬品区分 as DrugClass) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><DrugClassFilter selected={drug} onChange={setDrug} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }

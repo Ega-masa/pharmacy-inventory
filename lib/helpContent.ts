@@ -15,6 +15,17 @@ export interface HelpContent {
 
 export const HELP: Record<string, HelpContent> = {
 
+// ─── 薬品区分の説明（全機能共通） ────────────────────────────────
+export const DRUG_CLASS_HELP = {
+  "その他":   { meaning: "通常の医薬品。返品・融通・廃棄を通常手順で処理できます。", canProcess: true },
+  "劇薬":     { meaning: "廃棄・譲渡には記録・届出が必要な場合があります。卸に確認してください。", canProcess: true },
+  "向精神":   { meaning: "向精神薬。廃棄時は都道府県への届出が必要な場合があります。", canProcess: true },
+  "毒薬":     { meaning: "廃棄時は都道府県への届出が必要な場合があります。", canProcess: true },
+  "生物由来": { meaning: "生物由来製品。高額品が多く、定期的な在庫確認が必要です。", canProcess: true },
+  "麻薬":     { meaning: "麻薬。廃棄は都道府県への届出・立会いが法律で義務付けられています。通常の在庫処理はできません。", canProcess: false },
+  "覚醒剤":   { meaning: "覚醒剤原料。麻薬同様、廃棄には厳格な手続きが必要です。通常の在庫処理はできません。", canProcess: false },
+};
+
   return: {
     purpose: "卸への返品が可能な期限内の在庫を抽出します。入庫後に処方実績がなく最小発注単位以上の在庫がある品目が対象です。",
     focus: "「返品期限残」が少ない赤・橙の品目から優先対応してください。10日以内は緊急対応が必要です。",

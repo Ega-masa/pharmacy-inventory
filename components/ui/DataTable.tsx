@@ -200,6 +200,67 @@ export function AbcFilter({
   );
 }
 
+// ─── 薬品区分フィルター ─────────────────────
+export type DrugClass = "麻薬" | "覚醒剤" | "向精神" | "毒薬" | "劇薬" | "生物由来" | "その他";
+
+export const ALL_DRUG_CLASSES: DrugClass[] = [
+  "その他", "劇薬", "向精神", "毒薬", "生物由来", "麻薬", "覚醒剤",
+];
+
+const DRUG_CLASS_STYLE: Record<DrugClass, string> = {
+  "その他":  "bg-gray-100 text-gray-700 border-gray-300",
+  "劇薬":    "bg-orange-100 text-orange-800 border-orange-300",
+  "向精神":  "bg-yellow-100 text-yellow-800 border-yellow-300",
+  "毒薬":    "bg-red-100 text-red-800 border-red-300",
+  "生物由来":"bg-blue-100 text-blue-800 border-blue-300",
+  "麻薬":    "bg-purple-100 text-purple-800 border-purple-300",
+  "覚醒剤":  "bg-pink-100 text-pink-800 border-pink-300",
+};
+
+/** 薬品区分バッジ（テーブル内での表示用） */
+export function DrugClassBadge({ kubun }: { kubun: string }) {
+  const style = DRUG_CLASS_STYLE[kubun as DrugClass] ?? "bg-gray-100 text-gray-700 border-gray-200";
+  return (
+    <span className={`inline-block text-xs px-1.5 py-0.5 rounded border font-medium ${style}`}>
+      {kubun}
+    </span>
+  );
+}
+
+/** 薬品区分フィルター */
+export function DrugClassFilter({
+  selected, onChange,
+}: {
+  selected: Set<DrugClass>;
+  onChange: (v: Set<DrugClass>) => void;
+}) {
+  const toggle = (c: DrugClass) => {
+    const next = new Set(selected);
+    next.has(c) ? next.delete(c) : next.add(c);
+    if (next.size === 0) onChange(new Set(ALL_DRUG_CLASSES));
+    else onChange(next);
+  };
+  const allSelected = selected.size === ALL_DRUG_CLASSES.length;
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <span className="text-xs text-gray-500 mr-0.5">区分:</span>
+      {ALL_DRUG_CLASSES.map((c) => (
+        <button key={c} onClick={() => toggle(c)}
+          className={`text-xs px-1.5 py-0.5 rounded border transition
+            ${selected.has(c)
+              ? DRUG_CLASS_STYLE[c] + " font-medium"
+              : "bg-white text-gray-400 border-gray-200 hover:border-gray-400"}`}>
+          {c}
+        </button>
+      ))}
+      {!allSelected && (
+        <button onClick={() => onChange(new Set(ALL_DRUG_CLASSES))}
+          className="ml-1 text-xs text-orange-500 hover:underline">全て</button>
+      )}
+    </div>
+  );
+}
+
 // ─── 汎用金額フィルター ─────────────────────
 export function AmountFilter({
   min, max, onChange,

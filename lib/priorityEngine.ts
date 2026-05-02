@@ -61,8 +61,10 @@ export function calcPriorities(
   totalInventoryAmount: number
 ): PriorityItem[] {
   const today = new Date();
-
   const items: PriorityItem[] = [];
+
+  // ※ 麻薬・覚醒剤は抽出ロジック側で除外済み（処理不可品は優先リストに含まれない）
+  // ※ 向精神・毒薬・劇薬は抽出対象に含まれるが reason に「要手続き含む」注記あり
 
   // ─── ① 返品推奨 ───────────────────────────
   {
@@ -84,8 +86,8 @@ export function calcPriorities(
       urgentCount: urgent, totalCount: data.length, totalAmount: totalAmt,
       reason: urgent > 0
         ? `返品期限10日以内の品目が${urgent}件（¥${fmt(data.filter(i=>i.返品期限残日数<=10).reduce((s,i)=>s+i.在庫金額,0))}）あります`
-        : `返品期限20日以内の品目が${warn}件あります`,
-      action: "卸の担当者に連絡し、返品受付の確認と伝票起票を行ってください",
+        : `返品期限20日以内の品目が${warn}件あります（麻薬・覚醒剤を除く）`,
+      action: "卸の担当者に連絡し、返品受付の確認と伝票起票を行ってください（劇薬等は別途手続きが必要な場合あり）",
       badgeColor: urgent > 0 ? "red" : warn > 0 ? "orange" : "yellow",
       skip: data.length === 0,
     });
@@ -134,8 +136,8 @@ export function calcPriorities(
       score: score(Math.min(100, urgency), Math.min(100, impact), action),
       urgencyScore: urgency, impactScore: impact, actionScore: action,
       urgentCount: highUrgent.length, totalCount: data.length, totalAmount: totalAmt,
-      reason: `高単価の不動品が${data.length}件（¥${fmt(totalAmt)}）あります。1品目で数十万円の損失になりえます`,
-      action: "処方医に使用見込みを確認し、見込みがなければ返品・融通・廃棄の手続きを行ってください",
+      reason: `高単価の不動品が${data.length}件（¥${fmt(totalAmt)}）あります。生物由来製品も含まれる場合あり`,
+      action: "処方医に使用見込みを確認し、通常品は返品・融通・廃棄、生物由来は在庫量と処方予定を確認してください",
       badgeColor: highUrgent.length > 0 ? "red" : "orange",
       skip: data.length === 0,
     });

@@ -60,6 +60,9 @@ export interface RawTenshohinRow {
   ＣＳＶ麻薬: string;
   ＣＳＶ向精神: string;
   ＣＳＶ覚醒剤: string;
+  ＣＳＶ毒: string;
+  ＣＳＶ劇薬: string;
+  ＣＳＶ生物由来製品: string;
   一般名: string;
   薬効分類名: string;
   ロケーション１: string;
@@ -120,6 +123,10 @@ export interface InventoryItem {
   ＣＳＶ向精神: string;
   薬効分類名: string;
   ロケーション: string; // ロケーション1〜3を結合
+
+  // 薬品区分（法的規制・在庫処理可否の判断に使用）
+  薬品区分: "麻薬" | "覚醒剤" | "向精神" | "毒薬" | "劇薬" | "生物由来" | "その他";
+  薬品区分_処理可否: "通常処理可" | "要手続き" | "処理不可" | "要定期確認";
 
   // ABC分類（月使用金額ベースで自前計算）
   月使用金額: number; // 月使用数 × 薬価

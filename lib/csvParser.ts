@@ -243,6 +243,10 @@ export function mergeAndNormalize(
       薬効分類名: (tRow.薬効分類名 || "").trim(),
       ロケーション: locs,
 
+      // 薬品区分（優先度順: 麻薬 > 覚醒剤 > 向精神 > 毒薬 > 劇薬 > 生物由来 > その他）
+      薬品区分: classifyDrug(tRow),
+      薬品区分_処理可否: getDrugHandling(tRow),
+
       月使用金額: tsukishiyosu * (genYakka > 0 ? genYakka : kyuYakka),
       ABCランク: parseCsvABC(zRow.ＡＢＣ) ?? "E", // CSV有効値優先、null は仮値→後で再計算
 
@@ -270,6 +274,42 @@ export function mergeAndNormalize(
  *   "Z" → "E" (一部システムで使用ゼロ品目をZで表す)
  *   空白・その他 → "?" (後で自前計算が上書き)
  */
+/**
+ * 薬品区分の判定（優先度順: 麻薬 > 覚醒剤 > 向精神 > 毒薬 > 劇薬 > 生物由来 > その他）
+ * CSV値の末尾スペースを考慮して trim() してから判定
+ */
+function classifyDrug(tRow: RawTenshohinRow): InventoryItem["薬品区分"] {
+  if ((tRow.ＣＳＶ麻薬 || "").trim() === "対象") return "麻薬";
+  if ((tRow.ＣＳＶ覚醒剤 || "").trim() === "対象") return "覚醒剤";
+  const seishin = (tRow.ＣＳＶ向精神 || "").trim();
+  if (seishin !== "" && seishin !== "対象外") return "向精神";
+  if ((tRow.ＣＳＶ毒 || "").trim() === "対象") return "毒薬";
+  if ((tRow.ＣＳＶ劇薬 || "").trim() === "対象") return "劇薬";
+  const seibutsu = (tRow.ＣＳＶ生物由来製品 || "").trim();
+  if (seibutsu !== "" && seibutsu !== "対象外") return "生物由来";
+  return "その他";
+}
+
+/**
+ * 薬品区分に基づく在庫処理可否の判定
+ *  - 処理不可: 麻薬・覚醒剤（廃棄には都道府県への届出・立会いが必要）
+ *  - 要手続き: 向精神・毒薬・劇薬（廃棄・譲渡に記録・手続きが必要）
+ *  - 要定期確認: 生物由来（高額品が多く定期モニタリングが推奨）
+ *  - 通常処理可: その他（返品・融通・廃棄を通常手順で実施可）
+ */
+function getDrugHandling(tRow: RawTenshohinRow): InventoryItem["薬品区分_処理可否"] {
+  const kubun = classifyDrug(tRow);
+  switch (kubun) {
+    case "麻薬":
+    case "覚醒剤": return "処理不可";
+    case "向精神":
+    case "毒薬":
+    case "劇薬":   return "要手続き";
+    case "生物由来": return "要定期確認";
+    default:        return "通常処理可";
+  }
+}
+
 /** CSV ABC列→ランク変換。有効値なら A-E、それ以外は null を返す */
 function parseCsvABC(raw: string): InventoryItem["ABCランク"] | null {
   const v = (raw || "").trim().toUpperCase();
