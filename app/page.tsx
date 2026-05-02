@@ -3,8 +3,10 @@
 import React, { useState, useCallback, useMemo } from "react";
 import {
   Upload, AlertCircle, CheckCircle2, Loader2, ArrowLeft,
-  ChevronDown, ChevronUp, Settings, RotateCcw, RefreshCw
+  ChevronDown, ChevronUp, Settings, RotateCcw, RefreshCw,
+  HelpCircle, X as XIcon, Info
 } from "lucide-react";
+import { HELP } from "@/lib/helpContent";
 import type { InventoryItem, ExtractParams } from "@/types";
 import { DEFAULT_PARAMS } from "@/types";
 import { parseZaikoCSV, parseTenshohinCSV, mergeAndNormalize } from "@/lib/csvParser";
@@ -30,6 +32,79 @@ const RISK_BADGE_COLOR: Record<RiskBadge, string> = {
   長期不動: "badge badge-gray", 入荷不動: "badge badge-gray",
   製造中止: "badge badge-red", 高額不動: "badge badge-orange",
 };
+
+/* ─── ヘルプモーダル ─────────────────────── */
+function HelpModal({ viewKey, onClose }: { viewKey: string; onClose: () => void }) {
+  const h = HELP[viewKey];
+  if (!h) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-end p-4 pt-16 pr-6 pointer-events-none">
+      <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-96 max-h-[80vh] overflow-y-auto pointer-events-auto">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 sticky top-0 bg-white rounded-t-xl">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <HelpCircle size={15} className="text-blue-500" /> ヘルプ
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100">
+            <XIcon size={15} />
+          </button>
+        </div>
+        <div className="px-4 py-3 space-y-4 text-xs">
+          {/* 数字の意味 */}
+          <div>
+            <div className="font-semibold text-gray-700 mb-2 flex items-center gap-1">
+              <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-center text-xs font-bold leading-4 inline-block">1</span>
+              各列の数字が表す意味
+            </div>
+            <div className="space-y-1.5">
+              {h.columns.map((c) => (
+                <div key={c.name} className="bg-gray-50 rounded p-2">
+                  <span className="font-medium text-gray-700">{c.name}：</span>
+                  <span className="text-gray-600">{c.meaning}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* 見方 */}
+          <div>
+            <div className="font-semibold text-gray-700 mb-2 flex items-center gap-1">
+              <span className="w-4 h-4 rounded-full bg-green-100 text-green-700 text-center text-xs font-bold leading-4 inline-block">2</span>
+              数字の見方・ポイント
+            </div>
+            <div className="bg-green-50 rounded p-2 text-gray-600 leading-relaxed">{h.focus}</div>
+          </div>
+          {/* 作業手順 */}
+          <div>
+            <div className="font-semibold text-gray-700 mb-2 flex items-center gap-1">
+              <span className="w-4 h-4 rounded-full bg-orange-100 text-orange-700 text-center text-xs font-bold leading-4 inline-block">3</span>
+              具体的な作業手順
+            </div>
+            <ol className="space-y-1.5">
+              {h.steps.map((step, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="shrink-0 w-4 h-4 rounded-full bg-orange-100 text-orange-700 text-center text-xs font-bold leading-4 mt-0.5">{i + 1}</span>
+                  <span className="text-gray-600 leading-relaxed">{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ページ説明バナー ───────────────────── */
+function PageDescription({ viewKey }: { viewKey: string }) {
+  const h = HELP[viewKey];
+  if (!h) return null;
+  return (
+    <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-3 text-xs text-blue-800">
+      <Info size={13} className="shrink-0 mt-0.5 text-blue-500" />
+      <span className="leading-relaxed">{h.purpose}</span>
+    </div>
+  );
+}
 
 /* ─── 数値入力フィールド ─────────────────── */
 function NumInput({
@@ -343,6 +418,7 @@ function DetailPage({ view, results, inventoryData, globalParams, onParamsChange
   globalParams: ExtractParams; onParamsChange: (p: ExtractParams) => void; onBack: () => void;
 }) {
   const [localParams, setLocalParams] = useState<ExtractParams>(globalParams);
+  const [showHelp, setShowHelp] = useState(false);
   const section = SECTIONS.find((s) => s.key === view)!;
 
   const localResults = useMemo(() => {
@@ -355,7 +431,7 @@ function DetailPage({ view, results, inventoryData, globalParams, onParamsChange
 
   return (
     <main className="container mx-auto px-4 py-6 max-w-7xl">
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-3">
         <button onClick={onBack} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm text-gray-600">
           <ArrowLeft size={14} /> 戻る
         </button>
@@ -363,13 +439,20 @@ function DetailPage({ view, results, inventoryData, globalParams, onParamsChange
         <div className="ml-auto flex items-center gap-3 text-sm">
           <span className="bg-white rounded shadow px-3 py-1">件数 <b>{(r as { totalCount: number }).totalCount.toLocaleString()}</b></span>
           {totalAmount !== null && <span className="bg-white rounded shadow px-3 py-1">合計 <b className="text-blue-600">{formatYen(totalAmount)}</b></span>}
+          <button onClick={() => setShowHelp(!showHelp)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded border text-xs font-medium transition
+              ${showHelp ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-500 border-gray-300 hover:border-blue-400 hover:text-blue-600"}`}>
+            <HelpCircle size={14} /> ヘルプ
+          </button>
         </div>
       </div>
+      <PageDescription viewKey={view} />
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <DetailContent view={view} results={localResults} inventoryData={inventoryData}
           localParams={localParams} globalParams={globalParams}
           onLocalParamsChange={setLocalParams} onSyncToGlobal={onParamsChange} />
       </div>
+      {showHelp && <HelpModal viewKey={view} onClose={() => setShowHelp(false)} />}
     </main>
   );
 }
