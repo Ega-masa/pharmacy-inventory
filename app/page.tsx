@@ -23,7 +23,6 @@ import {
 import { formatYen, formatDate, formatNumber } from "@/lib/utils";
 import { saveHistory, getAllHistory, deleteHistory, type HistoryRecordWithId } from "@/lib/db";
 import DataTable, { type Column, AbcFilter, AmountFilter } from "@/components/ui/DataTable";
-import type { HistoryRecordWithId } from "@/lib/db";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
