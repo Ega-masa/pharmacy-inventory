@@ -144,7 +144,7 @@ function PageParamPanel({
   onSyncToGlobal: (p: ExtractParams) => void;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const isModified = JSON.stringify(localParams) !== JSON.stringify(globalParams);
   const set = (key: keyof ExtractParams, value: number | string) =>
     onChange({ ...localParams, [key]: value });
@@ -190,6 +190,7 @@ export default function HomePage() {
   const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
   const [params, setParams] = useState<ExtractParams>(DEFAULT_PARAMS);
   const [detailView, setDetailView] = useState<DetailView | null>(null);
+  const [fromPriority, setFromPriority] = useState(false);
 
   const results = useMemo<AllExtractResults | null>(() => {
     if (inventoryData.length === 0) return null;
@@ -218,7 +219,7 @@ export default function HomePage() {
   if (pageState === "detail" && results && detailView) {
     return (
       <DetailPage view={detailView} results={results} inventoryData={inventoryData}
-        globalParams={params} onParamsChange={setParams} onBack={() => setPageState("dashboard")} />
+        globalParams={params} onParamsChange={setParams} fromPriority={fromPriority} onBack={() => setPageState("dashboard")} />
     );
   }
   if (pageState === "dashboard" && results) {
@@ -226,7 +227,7 @@ export default function HomePage() {
       <DashboardPage results={results} totalItems={inventoryData.length}
         totalAmount={inventoryData.reduce((s, i) => s + i.在庫金額, 0)}
         params={params} onParamsChange={setParams}
-        onDetail={(v) => { setDetailView(v); setPageState("detail"); }}
+        onDetail={(v, fp) => { setDetailView(v); setFromPriority(fp ?? false); setPageState("detail"); }}
         onReset={handleReset} />
     );
   }
@@ -282,9 +283,9 @@ function PriorityPanel({
 }: {
   results: AllExtractResults;
   totalAmount: number;
-  onDetail: (v: DetailView) => void;
+  onDetail: (v: DetailView, fromPriority?: boolean) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const priorities = useMemo(
     () => calcPriorities(results, totalAmount),
     [results, totalAmount]
@@ -327,7 +328,7 @@ function PriorityPanel({
               {active.map((p, idx) => (
                 <button
                   key={p.view}
-                  onClick={() => onDetail(p.view as DetailView)}
+                  onClick={() => onDetail(p.view as DetailView, true)}
                   className="w-full flex items-start gap-3 px-4 py-3 hover:bg-blue-50 transition text-left"
                 >
                   {/* 順位 */}
@@ -489,7 +490,7 @@ const SECTIONS: { key: DetailView; label: string; color: string; unit?: string }
 function DashboardPage({ results, totalItems, totalAmount, params, onParamsChange, onDetail, onReset }: {
   results: AllExtractResults; totalItems: number; totalAmount: number;
   params: ExtractParams; onParamsChange: (p: ExtractParams) => void;
-  onDetail: (v: DetailView) => void; onReset: () => void;
+  onDetail: (v: DetailView, fromPriority?: boolean) => void; onReset: () => void;
 }) {
   const gc = (k: DetailView) => k === "multiMaker" ? results.multiMaker.totalCount : (results[k] as { totalCount: number }).totalCount;
   const ga = (k: DetailView): number | null => k === "multiMaker" ? null : (results[k] as { totalAmount: number }).totalAmount;
@@ -529,9 +530,10 @@ function DashboardPage({ results, totalItems, totalAmount, params, onParamsChang
 }
 
 /* ─── 詳細画面（ローカルparams管理） ──── */
-function DetailPage({ view, results, inventoryData, globalParams, onParamsChange, onBack }: {
+function DetailPage({ view, results, inventoryData, globalParams, onParamsChange, fromPriority, onBack }: {
   view: DetailView; results: AllExtractResults; inventoryData: InventoryItem[];
-  globalParams: ExtractParams; onParamsChange: (p: ExtractParams) => void; onBack: () => void;
+  globalParams: ExtractParams; onParamsChange: (p: ExtractParams) => void;
+  fromPriority: boolean; onBack: () => void;
 }) {
   const [localParams, setLocalParams] = useState<ExtractParams>(globalParams);
   const [showHelp, setShowHelp] = useState(false);
@@ -566,6 +568,7 @@ function DetailPage({ view, results, inventoryData, globalParams, onParamsChange
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <DetailContent view={view} results={localResults} inventoryData={inventoryData}
           localParams={localParams} globalParams={globalParams}
+          fromPriority={fromPriority}
           onLocalParamsChange={setLocalParams} onSyncToGlobal={onParamsChange} />
       </div>
       {showHelp && <HelpModal viewKey={view} onClose={() => setShowHelp(false)} />}
@@ -573,12 +576,13 @@ function DetailPage({ view, results, inventoryData, globalParams, onParamsChange
   );
 }
 
-function DetailContent({ view, results, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: {
+function DetailContent({ view, results, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: {
   view: DetailView; results: AllExtractResults; inventoryData: InventoryItem[];
   localParams: ExtractParams; globalParams: ExtractParams;
+  fromPriority: boolean;
   onLocalParamsChange: (p: ExtractParams) => void; onSyncToGlobal: (p: ExtractParams) => void;
 }) {
-  const props = { inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal };
+  const props = { inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal };
   switch (view) {
     case "return":              return <ReturnView              data={results.return.items}              {...props} />;
     case "excess":              return <ExcessView              data={results.excess.items}              {...props} />;
@@ -597,21 +601,60 @@ type ViewProps = {
   inventoryData: InventoryItem[];
   localParams: ExtractParams;
   globalParams: ExtractParams;
+  fromPriority: boolean;
   onLocalParamsChange: (p: ExtractParams) => void;
   onSyncToGlobal: (p: ExtractParams) => void;
 };
+
+/* ─── 急ぎフィルタートグル ─────────────────── */
+function UrgentToggle({
+  urgentOnly, urgentCount, totalCount, onChange,
+}: {
+  urgentOnly: boolean; urgentCount: number; totalCount: number;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 bg-red-50 border-b border-red-100">
+      <span className="text-xs text-red-700 font-medium flex items-center gap-1">
+        🚨 急ぎ対応
+        <span className="bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded ml-1">
+          {urgentCount}件
+        </span>
+      </span>
+      <span className="text-xs text-gray-500 ml-1">/ 全{totalCount}件</span>
+      <div className="ml-auto flex items-center gap-1">
+        <button
+          onClick={() => onChange(true)}
+          className={`px-2.5 py-1 rounded text-xs font-medium border transition
+            ${urgentOnly ? "bg-red-600 text-white border-red-600" : "bg-white text-gray-600 border-gray-300 hover:border-red-400"}`}
+        >
+          急ぎのみ
+        </button>
+        <button
+          onClick={() => onChange(false)}
+          className={`px-2.5 py-1 rounded text-xs font-medium border transition
+            ${!urgentOnly ? "bg-gray-700 text-white border-gray-700" : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"}`}
+        >
+          全て表示
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const searchFn = (item: { 表示名: string; 品名: string; メーカー: string; 一般名: string }) =>
   `${item.表示名} ${item.品名} ${item.メーカー} ${item.一般名}`;
 
 /* ─── ① 返品推奨 ─── */
-function ReturnView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["return"]["items"] } & ViewProps) {
+function ReturnView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["return"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
   const [amtMin, setAmtMin] = useState(0);
   const [amtMax, setAmtMax] = useState(Infinity);
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
 
   const data = useMemo(() => extractReturnCandidates(inventoryData, localParams).items, [inventoryData, localParams]);
+  const urgentCount = data.filter((i) => i.返品期限残日数 <= 10).length;
 
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
@@ -628,16 +671,18 @@ function ReturnView({ data: _data, inventoryData, localParams, globalParams, onL
       <PageParamPanel localParams={localParams} globalParams={globalParams} onChange={onLocalParamsChange} onSyncToGlobal={onSyncToGlobal}>
         <NumInput label="入庫経過日数（下限）" value={localParams.返品_経過日数下限} unit="日" min={1} max={89} onChange={(v) => set("返品_経過日数下限", v)} />
       </PageParamPanel>
+      {urgentCount > 0 && <UrgentToggle urgentOnly={urgentOnly} urgentCount={urgentCount} totalCount={data.length} onChange={setUrgentOnly} />}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="return_candidates.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? i.返品期限残日数 <= 10 : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax === Infinity ? 0 : amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── ② 過剰在庫 ─── */
-function ExcessView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["excess"]["items"] } & ViewProps) {
+function ExcessView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["excess"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
   const data = useMemo(() => extractExcessInventory(inventoryData, localParams).items, [inventoryData, localParams]);
@@ -663,16 +708,18 @@ function ExcessView({ data: _data, inventoryData, localParams, globalParams, onL
           ))}
         </div>
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.在庫月数_表示 >= 12).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="excess_inventory.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.在庫月数_表示 >= 12) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── ③ 廃棄リスク ─── */
-function ExpiryView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["expiry"]["items"] } & ViewProps) {
+function ExpiryView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["expiry"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
   const data = useMemo(() => extractExpiryRisk(inventoryData, localParams).items, [inventoryData, localParams]);
@@ -691,16 +738,18 @@ function ExpiryView({ data: _data, inventoryData, localParams, globalParams, onL
       <PageParamPanel localParams={localParams} globalParams={globalParams} onChange={onLocalParamsChange} onSyncToGlobal={onSyncToGlobal}>
         <NumInput label="有効期限残日数（上限）" value={localParams.廃棄リスク_残日数上限} unit="日" min={30} max={730} onChange={(v) => set("廃棄リスク_残日数上限", v)} />
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.残日数 <= 30).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="expiry_risk.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.残日数 <= 30) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── ④ 長期不動品 ─── */
-function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["longUnmoved"]["items"] } & ViewProps) {
+function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["longUnmoved"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
   const data = useMemo(() => extractLongUnmoved(inventoryData, localParams).items, [inventoryData, localParams]);
@@ -718,16 +767,18 @@ function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams
       <PageParamPanel localParams={localParams} globalParams={globalParams} onChange={onLocalParamsChange} onSyncToGlobal={onSyncToGlobal}>
         <NumInput label="処方経過日数（下限）" value={localParams.長期不動_経過日数下限} unit="日" min={30} max={730} onChange={(v) => set("長期不動_経過日数下限", v)} />
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.処方履歴なし || i.不動日数 >= 365).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="long_unmoved.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.処方履歴なし || i.不動日数 >= 365) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── ⑤ 入荷後不動品 ─── */
-function UnmovedView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["unmovedAfterArrival"]["items"] } & ViewProps) {
+function UnmovedView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["unmovedAfterArrival"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
   const data = useMemo(() => extractUnmovedAfterArrival(inventoryData, localParams).items, [inventoryData, localParams]);
@@ -745,16 +796,18 @@ function UnmovedView({ data: _data, inventoryData, localParams, globalParams, on
       <PageParamPanel localParams={localParams} globalParams={globalParams} onChange={onLocalParamsChange} onSyncToGlobal={onSyncToGlobal}>
         <NumInput label="入庫後経過日数（下限）" value={localParams.入荷後不動_経過日数下限} unit="日" min={30} max={365} onChange={(v) => set("入荷後不動_経過日数下限", v)} />
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.処方履歴なし).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="unmoved_after_arrival.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.処方履歴なし) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── A 製造中止 ─── */
-function DiscontinuedView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["discontinued"]["items"] } & ViewProps) {
+function DiscontinuedView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["discontinued"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const data = useMemo(() => extractDiscontinued(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
@@ -773,16 +826,18 @@ function DiscontinuedView({ data: _data, inventoryData, localParams, globalParam
       <PageParamPanel localParams={localParams} globalParams={globalParams} onChange={onLocalParamsChange} onSyncToGlobal={onSyncToGlobal}>
         <span className="text-xs text-gray-500">（この機能は条件が固定です）</span>
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.製造中止日 !== null).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="discontinued.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.製造中止日 !== null) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── C 高額不動品 ─── */
-function HighValueInactiveView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["highValueInactive"]["items"] } & ViewProps) {
+function HighValueInactiveView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["highValueInactive"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
   const data = useMemo(() => extractHighValueInactive(inventoryData, localParams).items, [inventoryData, localParams]);
@@ -811,16 +866,18 @@ function HighValueInactiveView({ data: _data, inventoryData, localParams, global
           ))}
         </div>
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.警告レベル === "red").length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="high_value_inactive.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.警告レベル === "red") : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── D 高額アクティブ ─── */
-function HighValueActiveView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["highValueActive"]["items"] } & ViewProps) {
+function HighValueActiveView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["highValueActive"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
   const data = useMemo(() => extractHighValueActive(inventoryData, localParams).items, [inventoryData, localParams]);
@@ -849,16 +906,18 @@ function HighValueActiveView({ data: _data, inventoryData, localParams, globalPa
           ))}
         </div>
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.月使用数 > 0 && i.在庫月数_計算値 > 3).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="high_value_active.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.月使用数 > 0 && i.在庫月数_計算値 > 3) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
 }
 
 /* ─── B デッドストック ─── */
-function DeadStockView({ data: _data, inventoryData, localParams, globalParams, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["deadStock"]["items"] } & ViewProps) {
+function DeadStockView({ data: _data, inventoryData, localParams, globalParams, fromPriority, onLocalParamsChange, onSyncToGlobal }: { data: AllExtractResults["deadStock"]["items"] } & ViewProps) {
   const [abc, setAbc] = useState(new Set(ALL_ABC));
+  const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const data = useMemo(() => extractDeadStockRanking(inventoryData, localParams, 100).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
@@ -875,8 +934,9 @@ function DeadStockView({ data: _data, inventoryData, localParams, globalParams, 
       <PageParamPanel localParams={localParams} globalParams={globalParams} onChange={onLocalParamsChange} onSyncToGlobal={onSyncToGlobal}>
         <span className="text-xs text-gray-500">（各機能の条件を個別ページで調整すると反映されます）</span>
       </PageParamPanel>
+      {(() => { const uc = data.filter((i) => i.リスク区分.length >= 2).length; return uc > 0 ? <UrgentToggle urgentOnly={urgentOnly} urgentCount={uc} totalCount={data.length} onChange={setUrgentOnly} /> : null; })()}
       <DataTable columns={cols} data={data} keyField="商品コード" exportFileName="deadstock_ranking.csv" getSearchText={searchFn}
-        extraFilter={(i) => abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
+        extraFilter={(i) => (urgentOnly ? (i.リスク区分.length >= 2) : true) && abc.has(i.ABCランク) && i.在庫金額 >= amtMin && i.在庫金額 <= amtMax}
         filterSlot={<><AbcFilter selected={abc} onChange={setAbc} /><AmountFilter min={amtMin} max={amtMax===Infinity?0:amtMax} onChange={(mn,mx) => { setAmtMin(mn); setAmtMax(mx||Infinity); }} /></>} />
     </>
   );
