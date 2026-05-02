@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   Upload, AlertCircle, CheckCircle2, Loader2, ArrowLeft,
   ChevronDown, ChevronUp, Settings, RotateCcw, RefreshCw,
@@ -108,7 +108,7 @@ function PageDescription({ viewKey }: { viewKey: string }) {
   const h = HELP[viewKey];
   if (!h) return null;
   return (
-    <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-3 text-xs text-blue-800">
+    <div className="flex items-start gap-2 bg-blue-50/60 border border-blue-100 rounded-lg px-3 py-2 mb-3 text-xs text-blue-700">
       <Info size={13} className="shrink-0 mt-0.5 text-blue-500" />
       <span className="leading-relaxed">{h.purpose}</span>
     </div>
@@ -218,7 +218,7 @@ export default function HomePage() {
       // 履歴を非同期で保存（UIをブロックしない）
       void (async () => {
         try {
-          const r = runAllExtractions(merged, DEFAULT_PARAMS);
+          const r = runAllExtractions(merged, params);
           await saveHistory({
             uploadedAt: new Date(),
             zaikoFileName: zaikoFile!.name,
@@ -308,7 +308,7 @@ export default function HomePage() {
           {pageState === "loading" ? <><Loader2 size={18} className="animate-spin" />分析中...</> : "分析を開始"}
         </button>
       </section>
-      <footer className="text-center text-xs text-gray-400 mt-4">v0.6.0 | データはブラウザ内で処理されサーバ送信されません</footer>
+      <footer className="text-center text-xs text-gray-400 mt-4">v1.0.0 | データはブラウザ内で処理されサーバ送信されません</footer>
     </main>
   );
 }
@@ -369,7 +369,8 @@ function PriorityPanel({
 
           {active.length === 0 ? (
             <div className="px-4 py-6 text-center text-gray-400 text-sm">
-              現在、緊急対応が必要な項目はありません。
+              🎉 現在、緊急対応が必要な項目はありません。
+              <div className="text-xs mt-1">在庫状態は良好です。引き続き月次チェックを継続してください。</div>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -601,7 +602,7 @@ function DetailPage({ view, results, inventoryData, globalParams, onParamsChange
     <main className="container mx-auto px-4 py-6 max-w-7xl">
       <div className="flex items-center gap-3 mb-3">
         <button onClick={onBack} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm text-gray-600">
-          <ArrowLeft size={14} /> 戻る
+          <ArrowLeft size={14} /> ダッシュボードへ
         </button>
         <h1 className="text-xl font-bold text-gray-900">{section.label}</h1>
         <div className="ml-auto flex items-center gap-3 text-sm">
@@ -610,7 +611,7 @@ function DetailPage({ view, results, inventoryData, globalParams, onParamsChange
           <button onClick={() => setShowHelp(!showHelp)}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded border text-xs font-medium transition
               ${showHelp ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-500 border-gray-300 hover:border-blue-400 hover:text-blue-600"}`}>
-            <HelpCircle size={14} /> ヘルプ
+            ❓ ヘルプ
           </button>
         </div>
       </div>
@@ -1055,7 +1056,7 @@ function HistoryPage({
   const [graphKey, setGraphKey] = useState<"return" | "excess" | "expiry" | "highValueInactive">("return");
 
   // 初回マウント時に読み込み
-  React.useEffect(() => {
+  useEffect(() => {
     if (!loaded) { onLoad(); setLoaded(true); }
   }, [loaded, onLoad]);
 
@@ -1095,7 +1096,7 @@ function HistoryPage({
         <div className="bg-white rounded-lg shadow p-12 text-center text-gray-400">
           <div className="text-5xl mb-4">📂</div>
           <div className="text-lg font-medium mb-2">まだ履歴がありません</div>
-          <div className="text-sm">CSVをアップロードして分析すると、ここに履歴が記録されます。</div>
+          <div className="text-sm">ダッシュボードでCSVをアップロードして分析すると、自動的にここに履歴が記録されます。<br />月次でアップロードすることで、在庫改善の推移をグラフで確認できます。</div>
         </div>
       ) : (
         <>
