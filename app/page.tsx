@@ -16,6 +16,9 @@ import {
   extractReturnCandidates, extractExcessInventory, extractExpiryRisk,
   extractLongUnmoved, extractUnmovedAfterArrival, extractDiscontinued,
   extractHighValueInactive, extractHighValueActive, extractDeadStockRanking,
+  type ReturnCandidateItem, type ExcessInventoryItem, type ExpiryRiskItem,
+  type LongUnmovedItem, type UnmovedAfterArrivalItem, type DiscontinuedItem,
+  type HighValueInactiveItem, type HighValueActiveItem, type DeadStockItem,
 } from "@/lib/extractors";
 import { formatYen, formatDate, formatNumber } from "@/lib/utils";
 import DataTable, { type Column, AbcFilter, AmountFilter } from "@/components/ui/DataTable";
@@ -653,7 +656,7 @@ function ReturnView({ data: _data, inventoryData, localParams, globalParams, fro
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
 
-  const data = useMemo(() => extractReturnCandidates(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): ReturnCandidateItem[] => extractReturnCandidates(inventoryData, localParams).items, [inventoryData, localParams]);
   const urgentCount = data.filter((i) => i.返品期限残日数 <= 10).length;
 
   const cols: Column<(typeof data)[0]>[] = [
@@ -685,7 +688,7 @@ function ExcessView({ data: _data, inventoryData, localParams, globalParams, fro
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
-  const data = useMemo(() => extractExcessInventory(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): ExcessInventoryItem[] => extractExcessInventory(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
@@ -722,7 +725,7 @@ function ExpiryView({ data: _data, inventoryData, localParams, globalParams, fro
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
-  const data = useMemo(() => extractExpiryRisk(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): ExpiryRiskItem[] => extractExpiryRisk(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
@@ -752,7 +755,7 @@ function LongUnmovedView({ data: _data, inventoryData, localParams, globalParams
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
-  const data = useMemo(() => extractLongUnmoved(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): LongUnmovedItem[] => extractLongUnmoved(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
@@ -781,7 +784,7 @@ function UnmovedView({ data: _data, inventoryData, localParams, globalParams, fr
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number) => onLocalParamsChange({ ...localParams, [k]: v });
-  const data = useMemo(() => extractUnmovedAfterArrival(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): UnmovedAfterArrivalItem[] => extractUnmovedAfterArrival(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
@@ -809,7 +812,7 @@ function DiscontinuedView({ data: _data, inventoryData, localParams, globalParam
   const [abc, setAbc] = useState(new Set(ALL_ABC));
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
-  const data = useMemo(() => extractDiscontinued(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): DiscontinuedItem[] => extractDiscontinued(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
@@ -840,7 +843,7 @@ function HighValueInactiveView({ data: _data, inventoryData, localParams, global
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
-  const data = useMemo(() => extractHighValueInactive(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): HighValueInactiveItem[] => extractHighValueInactive(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
@@ -880,7 +883,7 @@ function HighValueActiveView({ data: _data, inventoryData, localParams, globalPa
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
   const set = (k: keyof ExtractParams, v: number | string) => onLocalParamsChange({ ...localParams, [k]: v });
-  const data = useMemo(() => extractHighValueActive(inventoryData, localParams).items, [inventoryData, localParams]);
+  const data = useMemo((): HighValueActiveItem[] => extractHighValueActive(inventoryData, localParams).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
     { key: "ABCランク", label: "ABC", align: "center", getValue: (i) => i.ABCランク, render: (i) => <span className="badge badge-gray">{i.ABCランク}</span> },
@@ -919,7 +922,7 @@ function DeadStockView({ data: _data, inventoryData, localParams, globalParams, 
   const [abc, setAbc] = useState(new Set(ALL_ABC));
   const [urgentOnly, setUrgentOnly] = useState(fromPriority);
   const [amtMin, setAmtMin] = useState(0); const [amtMax, setAmtMax] = useState(Infinity);
-  const data = useMemo(() => extractDeadStockRanking(inventoryData, localParams, 100).items, [inventoryData, localParams]);
+  const data = useMemo((): DeadStockItem[] => extractDeadStockRanking(inventoryData, localParams, 100).items, [inventoryData, localParams]);
   const cols: Column<(typeof data)[0]>[] = [
     { key: "rank", label: "#", align: "right", sortable: false, getValue: (_,i) => (i??0)+1, render: (_,i) => <span className="text-gray-500 font-bold">{(i??0)+1}</span> },
     { key: "表示名", label: "薬品", getValue: (i) => i.表示名, render: (i) => <span className="font-medium text-sm">{i.表示名}</span> },
