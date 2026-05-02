@@ -21,9 +21,15 @@ import {
   type HighValueInactiveItem, type HighValueActiveItem, type DeadStockItem,
 } from "@/lib/extractors";
 import { formatYen, formatDate, formatNumber } from "@/lib/utils";
+import { saveHistory, getAllHistory, deleteHistory, type HistoryRecordWithId } from "@/lib/db";
 import DataTable, { type Column, AbcFilter, AmountFilter } from "@/components/ui/DataTable";
+import type { HistoryRecordWithId } from "@/lib/db";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
+} from "recharts";
 
-type PageState = "upload" | "loading" | "dashboard" | "detail";
+type PageState = "upload" | "loading" | "dashboard" | "detail" | "history";
 type DetailView = keyof AllExtractResults;
 const ALL_ABC = new Set(["A","B","C","D","E"]);
 
@@ -194,6 +200,7 @@ export default function HomePage() {
   const [params, setParams] = useState<ExtractParams>(DEFAULT_PARAMS);
   const [detailView, setDetailView] = useState<DetailView | null>(null);
   const [fromPriority, setFromPriority] = useState(false);
+  const [historyList, setHistoryList] = useState<HistoryRecordWithId[]>([]);
 
   const results = useMemo<AllExtractResults | null>(() => {
     if (inventoryData.length === 0) return null;
@@ -209,6 +216,34 @@ export default function HomePage() {
       const merged = mergeAndNormalize(zaiko, tenshohin);
       if (merged.length === 0) { setErrorMessage("マッチする在庫品目がありません"); setPageState("upload"); return; }
       setInventoryData(merged); setPageState("dashboard");
+      // 履歴を非同期で保存（UIをブロックしない）
+      void (async () => {
+        try {
+          const r = runAllExtractions(merged, DEFAULT_PARAMS);
+          await saveHistory({
+            uploadedAt: new Date(),
+            zaikoFileName: zaikoFile!.name,
+            tenshohinFileName: tenshohinFile!.name,
+            店舗コード: merged[0]?.店舗コード ?? "",
+            店舗名: merged[0]?.店舗名 ?? "",
+            totalItems: merged.length,
+            inStockItems: merged.filter(i => i.理論在庫 > 0).length,
+            summary: {
+              return: { count: r.return.totalCount, amount: r.return.totalAmount },
+              excess: { count: r.excess.totalCount, amount: r.excess.totalAmount },
+              expiry: { count: r.expiry.totalCount, amount: r.expiry.totalAmount },
+              longUnmoved: { count: r.longUnmoved.totalCount, amount: r.longUnmoved.totalAmount },
+              unmovedAfterArrival: { count: r.unmovedAfterArrival.totalCount, amount: r.unmovedAfterArrival.totalAmount },
+              multiMaker: { count: r.multiMaker.totalCount },
+              discontinued: { count: r.discontinued.totalCount, amount: r.discontinued.totalAmount },
+              deadStock: { count: r.deadStock.totalCount, amount: r.deadStock.totalAmount },
+              highValueInactive: { count: r.highValueInactive.totalCount, amount: r.highValueInactive.totalAmount },
+              highValueActive: { count: r.highValueActive.totalCount, amount: r.highValueActive.totalAmount },
+            },
+            params: DEFAULT_PARAMS,
+          });
+        } catch (_) { /* 保存失敗は無視 */ }
+      })();
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "不明なエラー"); setPageState("upload");
     }
@@ -219,6 +254,16 @@ export default function HomePage() {
     setInventoryData([]); setParams(DEFAULT_PARAMS); setPageState("upload");
   }, []);
 
+  if (pageState === "history") {
+    return <HistoryPage
+      onBack={() => setPageState("dashboard")}
+      historyList={historyList}
+      onLoad={() => getAllHistory().then(setHistoryList).catch(() => {})}
+      onDelete={async (id: number) => {
+        await deleteHistory(id);
+        getAllHistory().then(setHistoryList).catch(() => {});
+      }} />;
+  }
   if (pageState === "detail" && results && detailView) {
     return (
       <DetailPage view={detailView} results={results} inventoryData={inventoryData}
@@ -231,6 +276,7 @@ export default function HomePage() {
         totalAmount={inventoryData.reduce((s, i) => s + i.在庫金額, 0)}
         params={params} onParamsChange={setParams}
         onDetail={(v, fp) => { setDetailView(v); setFromPriority(fp ?? false); setPageState("detail"); }}
+        onHistory={() => { getAllHistory().then(setHistoryList).catch(() => {}); setPageState("history"); }}
         onReset={handleReset} />
     );
   }
@@ -493,7 +539,8 @@ const SECTIONS: { key: DetailView; label: string; color: string; unit?: string }
 function DashboardPage({ results, totalItems, totalAmount, params, onParamsChange, onDetail, onReset }: {
   results: AllExtractResults; totalItems: number; totalAmount: number;
   params: ExtractParams; onParamsChange: (p: ExtractParams) => void;
-  onDetail: (v: DetailView, fromPriority?: boolean) => void; onReset: () => void;
+  onDetail: (v: DetailView, fromPriority?: boolean) => void;
+  onHistory: () => void; onReset: () => void;
 }) {
   const gc = (k: DetailView) => k === "multiMaker" ? results.multiMaker.totalCount : (results[k] as { totalCount: number }).totalCount;
   const ga = (k: DetailView): number | null => k === "multiMaker" ? null : (results[k] as { totalAmount: number }).totalAmount;
@@ -501,9 +548,10 @@ function DashboardPage({ results, totalItems, totalAmount, params, onParamsChang
     <main className="container mx-auto px-4 py-6 max-w-6xl">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-900">薬局在庫分析システム</h1>
-        <button onClick={onReset} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm text-gray-600">
-          <ArrowLeft size={14} /> 新しいCSV
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={onHistory} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm text-gray-600">📊 履歴</button>
+          <button onClick={onReset} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm text-gray-600"><ArrowLeft size={14} /> 新しいCSV</button>
+        </div>
       </div>
       <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="bg-white rounded-lg shadow p-3"><div className="text-xs text-gray-500">在庫品目数</div><div className="text-xl font-bold">{totalItems.toLocaleString()}</div></div>
@@ -991,5 +1039,246 @@ function MultiMakerView({ data }: { data: AllExtractResults["multiMaker"]["group
         </table>
       </div>
     </div>
+  );
+}
+
+/* ─── 履歴ページ ─────────────────────────── */
+function HistoryPage({
+  onBack, historyList, onLoad, onDelete,
+}: {
+  onBack: () => void;
+  historyList: HistoryRecordWithId[];
+  onLoad: () => void;
+  onDelete: (id: number) => Promise<void>;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [deleting, setDeleting] = useState<number | null>(null);
+  const [graphKey, setGraphKey] = useState<"return" | "excess" | "expiry" | "highValueInactive">("return");
+
+  // 初回マウント時に読み込み
+  React.useEffect(() => {
+    if (!loaded) { onLoad(); setLoaded(true); }
+  }, [loaded, onLoad]);
+
+  // グラフデータ生成（古い順）
+  const chartData = [...historyList].reverse().map((r) => ({
+    date: new Date(r.uploadedAt).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }),
+    返品: r.summary.return.count,
+    廃棄: r.summary.expiry.count,
+    過剰在庫: r.summary.excess.count,
+    高額不動: r.summary.highValueInactive.count,
+    返品金額: Math.round(r.summary.return.amount / 1000),
+    廃棄金額: Math.round(r.summary.expiry.amount / 1000),
+    高額不動金額: Math.round(r.summary.highValueInactive.amount / 1000),
+  }));
+
+  const GRAPH_KEYS = [
+    { key: "return" as const, label: "返品推奨", countKey: "返品", amtKey: "返品金額", color: "#f97316" },
+    { key: "excess" as const, label: "過剰在庫", countKey: "過剰在庫", amtKey: undefined, color: "#eab308" },
+    { key: "expiry" as const, label: "廃棄リスク", countKey: "廃棄", amtKey: "廃棄金額", color: "#ef4444" },
+    { key: "highValueInactive" as const, label: "高額不動品", countKey: "高額不動", amtKey: "高額不動金額", color: "#a855f7" },
+  ];
+
+  const activeGraph = GRAPH_KEYS.find((g) => g.key === graphKey)!;
+
+  return (
+    <main className="container mx-auto px-4 py-6 max-w-6xl">
+      {/* ヘッダー */}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm text-gray-600">
+          <ArrowLeft size={14} /> ダッシュボードへ
+        </button>
+        <h1 className="text-2xl font-bold text-gray-900">📊 アップロード履歴</h1>
+        <span className="text-sm text-gray-500 ml-2">{historyList.length}件</span>
+      </div>
+
+      {historyList.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-12 text-center text-gray-400">
+          <div className="text-5xl mb-4">📂</div>
+          <div className="text-lg font-medium mb-2">まだ履歴がありません</div>
+          <div className="text-sm">CSVをアップロードして分析すると、ここに履歴が記録されます。</div>
+        </div>
+      ) : (
+        <>
+          {/* 推移グラフ */}
+          {historyList.length >= 2 && (
+            <section className="bg-white rounded-lg shadow p-5 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold text-gray-800">指標の推移</h2>
+                <div className="flex gap-1">
+                  {GRAPH_KEYS.map((g) => (
+                    <button key={g.key} onClick={() => setGraphKey(g.key)}
+                      className={`px-2.5 py-1 rounded text-xs font-medium border transition
+                        ${graphKey === g.key ? "text-white border-transparent" : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"}`}
+                      style={graphKey === g.key ? { backgroundColor: g.color, borderColor: g.color } : {}}>
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {/* 件数グラフ */}
+                <div>
+                  <div className="text-xs text-gray-500 mb-2 text-center">{activeGraph.label}（件数）</div>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: number) => [`${v}件`, activeGraph.label]} />
+                      <Line type="monotone" dataKey={activeGraph.countKey}
+                        stroke={activeGraph.color} strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* 金額グラフ */}
+                {activeGraph.amtKey && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-2 text-center">{activeGraph.label}（金額 千円）</div>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(v: number) => [`¥${(v * 1000).toLocaleString()}`, "在庫金額"]} />
+                        <Line type="monotone" dataKey={activeGraph.amtKey}
+                          stroke={activeGraph.color} strokeWidth={2} strokeDasharray="5 5"
+                          dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* 全指標サマリ推移（最新3件比較） */}
+          {historyList.length >= 2 && (
+            <section className="bg-white rounded-lg shadow p-5 mb-6">
+              <h2 className="text-base font-semibold text-gray-800 mb-4">最新3回の比較</h2>
+              <div className="overflow-x-auto">
+                <table className="data-table text-xs">
+                  <thead>
+                    <tr>
+                      <th>指標</th>
+                      {historyList.slice(0, 3).map((r, i) => (
+                        <th key={r.id} className="text-right">
+                          {i === 0 ? "🟢 最新" : i === 1 ? "前回" : "前々回"}<br />
+                          <span className="font-normal text-gray-400">
+                            {new Date(r.uploadedAt).toLocaleDateString("ja-JP")}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { label: "返品推奨", keys: ["return"] },
+                      { label: "過剰在庫", keys: ["excess"] },
+                      { label: "廃棄リスク", keys: ["expiry"] },
+                      { label: "長期不動", keys: ["longUnmoved"] },
+                      { label: "入荷後不動", keys: ["unmovedAfterArrival"] },
+                      { label: "複数メーカー", keys: ["multiMaker"] },
+                      { label: "製造中止", keys: ["discontinued"] },
+                      { label: "高額不動品", keys: ["highValueInactive"] },
+                    ].map(({ label, keys }) => {
+                      const rows = historyList.slice(0, 3);
+                      return (
+                        <tr key={label}>
+                          <td className="font-medium">{label}</td>
+                          {rows.map((r, i) => {
+                            const cur = (r.summary as Record<string, { count: number }>)[keys[0]].count;
+                            const prev = i < rows.length - 1
+                              ? (rows[i + 1].summary as Record<string, { count: number }>)[keys[0]].count
+                              : null;
+                            const diff = prev !== null ? cur - prev : null;
+                            return (
+                              <td key={r.id} className="text-right">
+                                <span className="font-bold">{cur}</span>
+                                {diff !== null && diff !== 0 && (
+                                  <span className={`ml-1 text-xs ${diff > 0 ? "text-red-500" : "text-green-600"}`}>
+                                    {diff > 0 ? `▲${diff}` : `▼${Math.abs(diff)}`}
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                    <tr className="font-semibold bg-gray-50">
+                      <td>在庫品目数</td>
+                      {historyList.slice(0, 3).map((r) => (
+                        <td key={r.id} className="text-right">{r.inStockItems}</td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {/* 履歴一覧 */}
+          <section className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 text-sm font-medium text-gray-700">
+              アップロード履歴一覧
+            </div>
+            <div className="divide-y divide-gray-50">
+              {historyList.map((r) => (
+                <div key={r.id} className="px-5 py-4 hover:bg-gray-50">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold text-gray-800">
+                          {new Date(r.uploadedAt).toLocaleDateString("ja-JP", {
+                            year: "numeric", month: "short", day: "numeric",
+                            weekday: "short", hour: "2-digit", minute: "2-digit",
+                          })}
+                        </span>
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">
+                          {r.店舗名 || r.店舗コード}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400 mb-2">{r.zaikoFileName}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { label: "返品", val: r.summary.return.count, color: "orange" },
+                          { label: "廃棄", val: r.summary.expiry.count, color: "red" },
+                          { label: "過剰", val: r.summary.excess.count, color: "yellow" },
+                          { label: "高額不動", val: r.summary.highValueInactive.count, color: "purple" },
+                          { label: "在庫品目", val: r.inStockItems, color: "blue" },
+                        ].map(({ label, val, color }) => (
+                          <span key={label}
+                            className={`text-xs px-2 py-0.5 rounded-full border
+                              ${color === "orange" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                                color === "red" ? "bg-red-50 text-red-700 border-red-200" :
+                                color === "yellow" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                color === "purple" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                                "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                            {label} <b>{val}</b>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm("この履歴を削除しますか？")) return;
+                        setDeleting(r.id);
+                        await onDelete(r.id);
+                        setDeleting(null);
+                      }}
+                      disabled={deleting === r.id}
+                      className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition disabled:opacity-40"
+                    >
+                      {deleting === r.id ? "削除中..." : "削除"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+    </main>
   );
 }
