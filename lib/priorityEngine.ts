@@ -7,7 +7,12 @@
  *  3. 対応可能性・件数        … 20%
  */
 
-import type { AllExtractResults } from "@/lib/extractors";
+import type {
+  AllExtractResults,
+  ReturnCandidateItem, ExcessInventoryItem, ExpiryRiskItem,
+  LongUnmovedItem, UnmovedAfterArrivalItem, DiscontinuedItem,
+  HighValueInactiveItem, HighValueActiveItem,
+} from "@/lib/extractors";
 
 export interface PriorityItem {
   view: keyof AllExtractResults;
@@ -61,7 +66,7 @@ export function calcPriorities(
 
   // ─── ① 返品推奨 ───────────────────────────
   {
-    const data = results.return.items;
+    const data = results.return.items as ReturnCandidateItem[];
     const urgent = data.filter((i) => i.返品期限残日数 <= 10).length;
     const warn = data.filter((i) => i.返品期限残日数 > 10 && i.返品期限残日数 <= 20).length;
     const totalAmt = results.return.totalAmount;
@@ -88,7 +93,7 @@ export function calcPriorities(
 
   // ─── ③ 廃棄リスク ─────────────────────────
   {
-    const data = results.expiry.items;
+    const data = results.expiry.items as ExpiryRiskItem[];
     const exp30 = data.filter((i) => i.残日数 <= 30);
     const exp60 = data.filter((i) => i.残日数 > 30 && i.残日数 <= 60);
     const totalAmt = results.expiry.totalAmount;
@@ -114,7 +119,7 @@ export function calcPriorities(
 
   // ─── C 高額不動品 ─────────────────────────
   {
-    const data = results.highValueInactive.items;
+    const data = results.highValueInactive.items as HighValueInactiveItem[];
     const highUrgent = data.filter((i) => i.警告レベル === "red");
     const totalAmt = results.highValueInactive.totalAmount;
 
@@ -138,7 +143,7 @@ export function calcPriorities(
 
   // ─── A 製造中止・経過措置 ─────────────────
   {
-    const data = results.discontinued.items;
+    const data = results.discontinued.items as DiscontinuedItem[];
     const stopped = data.filter((i) => i.製造中止日 !== null);
     const measure90 = data.filter(
       (i) => i.経過措置残日数 !== null && i.経過措置残日数 <= 90
@@ -167,7 +172,7 @@ export function calcPriorities(
 
   // ─── ⑤ 入荷後不動品 ─────────────────────
   {
-    const data = results.unmovedAfterArrival.items;
+    const data = results.unmovedAfterArrival.items as UnmovedAfterArrivalItem[];
     const noHistory = data.filter((i) => i.処方履歴なし).length;
     const totalAmt = results.unmovedAfterArrival.totalAmount;
 
@@ -196,7 +201,7 @@ export function calcPriorities(
 
   // ─── ④ 長期不動品 ─────────────────────────
   {
-    const data = results.longUnmoved.items;
+    const data = results.longUnmoved.items as LongUnmovedItem[];
     const noHistory = data.filter((i) => i.処方履歴なし).length;
     const over1year = data.filter((i) => !i.処方履歴なし && i.不動日数 >= 365).length;
     const totalAmt = results.longUnmoved.totalAmount;
@@ -220,7 +225,7 @@ export function calcPriorities(
 
   // ─── ② 過剰在庫 ──────────────────────────
   {
-    const data = results.excess.items;
+    const data = results.excess.items as ExcessInventoryItem[];
     const totalAmt = results.excess.totalAmount;
     const reductionAmt = data.reduce((s, i) => s + i.推奨削減金額, 0);
 
@@ -265,7 +270,7 @@ export function calcPriorities(
 
   // ─── D 高額アクティブ ─────────────────────
   {
-    const data = results.highValueActive.items;
+    const data = results.highValueActive.items as HighValueActiveItem[];
     const over3m = data.filter((i) => i.月使用数 > 0 && i.在庫月数_計算値 > 3).length;
     const totalAmt = results.highValueActive.totalAmount;
 
