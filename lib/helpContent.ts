@@ -13,8 +13,6 @@ export interface HelpContent {
   steps: string[];
 }
 
-export const HELP: Record<string, HelpContent> = {
-
 // ─── 薬品区分の説明（全機能共通） ────────────────────────────────
 export const DRUG_CLASS_HELP = {
   "その他":   { meaning: "通常の医薬品。返品・融通・廃棄を通常手順で処理できます。", canProcess: true },
@@ -25,6 +23,8 @@ export const DRUG_CLASS_HELP = {
   "麻薬":     { meaning: "麻薬。廃棄は都道府県への届出・立会いが法律で義務付けられています。通常の在庫処理はできません。", canProcess: false },
   "覚醒剤":   { meaning: "覚醒剤原料。麻薬同様、廃棄には厳格な手続きが必要です。通常の在庫処理はできません。", canProcess: false },
 };
+
+export const HELP: Record<string, HelpContent> = {
 
   return: {
     purpose: "卸への返品が可能な期限内の在庫を抽出します。入庫後に処方実績がなく最小発注単位以上の在庫がある品目が対象です。",
